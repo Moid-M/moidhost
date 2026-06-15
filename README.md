@@ -74,7 +74,9 @@
 <br>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
+git clone https://github.com/Moid-M/moidhost.git
+cd moidhost
+sudo ./install.sh
 ```
 
 <details>
@@ -100,7 +102,7 @@ curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | s
 </details>
 
 <details>
-<summary><b>🖥️ Build from source</b></summary>
+<summary><b>🖥️ Build from source (manual)</b></summary>
 <br>
 
 ```bash
