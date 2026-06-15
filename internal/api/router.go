@@ -26,6 +26,7 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 	mux.HandleFunc("POST /api/servers/{id}/start", h.StartServer)
 	mux.HandleFunc("POST /api/servers/{id}/stop", h.StopServer)
 	mux.HandleFunc("POST /api/servers/{id}/restart", h.RestartServer)
+	mux.HandleFunc("POST /api/servers/{id}/kill", h.KillServer)
 	mux.HandleFunc("POST /api/servers/{id}/command", h.SendCommand)
 	mux.HandleFunc("GET /api/servers/{id}/console", h.ConsoleWS)
 	mux.HandleFunc("GET /api/servers/{id}/logs", h.GetLogs)
@@ -34,6 +35,8 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 	mux.HandleFunc("DELETE /api/servers/{id}/files", h.DeleteFile)
 	mux.HandleFunc("POST /api/servers/{id}/upload", h.UploadFile)
 	mux.HandleFunc("GET /api/servers/{id}/download", h.DownloadFile)
+
+	mux.HandleFunc("GET /api/system/stats", h.SystemStats)
 
 	webRoot, err := fs.Sub(webFS, "web")
 	if err != nil {

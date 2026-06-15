@@ -273,6 +273,28 @@ func (m *Manager) Stop(id string) error {
 	return nil
 }
 
+func (m *Manager) Kill(id string) error {
+	m.mu.Lock()
+	inst, ok := m.instances[id]
+	if !ok {
+		m.mu.Unlock()
+		return fmt.Errorf("server %s not found", id)
+	}
+	if inst.Status != StatusRunning {
+		m.mu.Unlock()
+		return nil
+	}
+
+	inst.Status = StatusStopping
+	proc := inst.Process
+	m.mu.Unlock()
+
+	if proc != nil {
+		proc.Stop(5 * time.Second)
+	}
+	return nil
+}
+
 func (m *Manager) Restart(id string) error {
 	if err := m.Stop(id); err != nil {
 		return err

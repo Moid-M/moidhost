@@ -470,6 +470,55 @@ html, body {
   border-color: var(--accent);
 }
 
+/* System stats */
+.system-stats {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.stats-row { margin-bottom: 12px; }
+
+.stat-block {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  gap: 8px;
+  align-items: center;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.stat-bar {
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stat-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+.stat-pct {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text);
+}
+
+.stat-sub {
+  grid-column: 2;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

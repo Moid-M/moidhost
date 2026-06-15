@@ -74,13 +74,15 @@ function showTab(name) {
 /* ── Dashboard ── */
 function renderDashboard(s) {
   const el = $('#tab-content');
+  const running = s.status === 'running';
   el.innerHTML = `
     <div class="dashboard-actions">
-      ${s.status === 'running' ? `
-        <button class="btn btn-red btn-sm" onclick="action('stop')">Stop</button>
-        <button class="btn btn-sm" onclick="action('restart')">Restart</button>
-      ` : `
+      ${!running ? `
         <button class="btn btn-green btn-sm" onclick="action('start')">Start</button>
+      ` : `
+        <button class="btn btn-red btn-sm" onclick="action('stop')">Shutdown</button>
+        <button class="btn btn-sm" onclick="action('kill')">Kill</button>
+        <button class="btn btn-sm" onclick="action('restart')">Restart</button>
       `}
     </div>
     <div class="dashboard-grid">
@@ -97,7 +99,16 @@ function renderDashboard(s) {
         <div class="value" style="font-size:13px;font-family:var(--font-mono)">${esc(s.jar_file)}</div>
       </div>
     </div>
+    <div class="system-stats" id="system-stats">
+      <h3 style="font-size:14px;margin-bottom:12px;color:var(--text-dim)">System Resources</h3>
+      <div class="stats-row"><div class="stat-block" id="stat-cpu"></div></div>
+      <div class="stats-row"><div class="stat-block" id="stat-mem"></div></div>
+      <div class="stats-row"><div class="stat-block" id="stat-disk"></div></div>
+    </div>
   `;
+  loadStats();
+  if (statsInterval) clearInterval(statsInterval);
+  statsInterval = setInterval(loadStats, 5000);
 }
 
 window.action = function(act) {
@@ -109,6 +120,35 @@ window.action = function(act) {
     if (act === 'start') openConsole();
   }).catch(e => alert(e.message));
 };
+
+/* ── System Stats ── */
+let statsInterval = null;
+
+async function loadStats() {
+  try {
+    const stats = await api('/system/stats');
+    const cpuEl = $('#stat-cpu'); const memEl = $('#stat-mem'); const diskEl = $('#stat-disk');
+    if (cpuEl) cpuEl.innerHTML = barHTML('CPU', stats.cpu.percent);
+    if (memEl) memEl.innerHTML = barHTML('RAM', stats.memory.percent, fmtBytes(stats.memory.used_bytes) + ' / ' + fmtBytes(stats.memory.total_bytes));
+    if (diskEl) diskEl.innerHTML = barHTML('Disk', stats.disk.percent, fmtBytes(stats.disk.used_bytes) + ' / ' + fmtBytes(stats.disk.total_bytes));
+  } catch (_) {}
+}
+
+function barHTML(label, pct, sub) {
+  const color = pct > 80 ? '#f85149' : pct > 60 ? '#d29922' : '#3fb950';
+  return `<div class="stat-label">${esc(label)}</div>
+    <div class="stat-bar"><div class="stat-fill" style="width:${Math.min(pct,100)}%;background:${color}"></div></div>
+    <div class="stat-pct">${pct}%</div>
+    ${sub ? '<div class="stat-sub">' + esc(sub) + '</div>' : ''}`;
+}
+
+function fmtBytes(b) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  let v = b;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
 
 /* ── Console ── */
 function renderConsole(s) {

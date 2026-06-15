@@ -7,6 +7,7 @@ import (
 
 	"moidhost/internal/config"
 	"moidhost/internal/server"
+	"moidhost/internal/system"
 )
 
 type serverResponse struct {
@@ -125,6 +126,16 @@ func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(toResponse(inst))
 }
 
+func (h *Handler) KillServer(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.manager.Kill(id); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	inst := h.manager.Get(id)
+	json.NewEncoder(w).Encode(toResponse(inst))
+}
+
 func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.manager.Restart(id); err != nil {
@@ -133,6 +144,15 @@ func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 	}
 	inst := h.manager.Get(id)
 	json.NewEncoder(w).Encode(toResponse(inst))
+}
+
+func (h *Handler) SystemStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := system.GetStats(h.dataDir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(stats)
 }
 
 func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
