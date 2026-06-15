@@ -40,6 +40,7 @@
         <div id="server-list" class="sidebar-section-body"></div>
       </div>
       <div class="sidebar-footer">
+        <button id="manage-users-btn" class="btn btn-sm" style="width:100%;margin-bottom:6px;display:none">👥 Users</button>
         <button id="new-server-btn" class="btn btn-primary" style="width:100%;margin-bottom:6px">+ New Server</button>
         <button class="btn btn-sm" onclick="logout()" style="width:100%">Logout</button>
       </div>
@@ -49,6 +50,13 @@
       <div id="welcome">
         <h2>Select a server</h2>
         <p>Choose a server from the sidebar to manage it.</p>
+      </div>
+      <div id="user-management" style="display:none">
+        <div class="view-header">
+          <h2>User Management</h2>
+          <button class="btn btn-primary btn-sm" onclick="showUserModal()">+ Add User</button>
+        </div>
+        <div id="user-list"></div>
       </div>
       <div id="server-view" style="display:none">
         <div class="view-header">
@@ -64,7 +72,6 @@
           <button class="tab" data-tab="backups">Backups</button>
           <button class="tab" data-tab="players">Players</button>
           <button class="tab" data-tab="settings">Settings</button>
-          <button class="tab" data-tab="users" id="users-tab" style="display:none">Users</button>
         </nav>
         <div id="tab-content"></div>
       </div>

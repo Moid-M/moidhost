@@ -97,8 +97,7 @@ async function initApp() {
   $('#app').style.display = 'flex';
   if (authUser) {
     $('#sidebar-user').textContent = authUser.username + (authUser.role === 'admin' ? ' (admin)' : '');
-    if (authUser.role === 'admin') $('#users-tab').style.display = '';
-    else $('#users-tab').style.display = 'none';
+    $('#manage-users-btn').style.display = authUser.role === 'admin' ? '' : 'none';
   }
   loadServers();
   if (loadInterval) clearInterval(loadInterval);
@@ -174,8 +173,18 @@ function renderSidebar() {
 
 function selectServer(id) {
   selectedId = id; closeConsole(); closeSidebar();
-  $('#welcome').style.display = 'none'; $('#server-view').style.display = 'flex';
+  $('#welcome').style.display = 'none';
+  $('#user-management').style.display = 'none';
+  $('#server-view').style.display = 'flex';
   renderSidebar(); showTab(currentTab);
+}
+
+function showUserManagement() {
+  selectedId = null; closeSidebar();
+  $('#welcome').style.display = 'none';
+  $('#server-view').style.display = 'none';
+  $('#user-management').style.display = 'flex';
+  renderUsers();
 }
 
 /* ── Tabs ── */
@@ -191,7 +200,7 @@ function showTab(name) {
   const tabMap = {
     dashboard: renderDashboard, console: renderConsole, files: renderFiles,
     world: renderWorld, backups: renderBackups, players: renderPlayers,
-    settings: renderSettings, users: renderUsers,
+    settings: renderSettings,
   };
   (tabMap[name] || (() => {}))(s);
 }
@@ -439,31 +448,29 @@ window.togglePlayer=function(n){expandedPlayer=expandedPlayer===n?null:n;renderP
 
 /* ── Users (admin only) ── */
 async function renderUsers() {
-  if (authUser && authUser.role !== 'admin') { $('#tab-content').innerHTML = '<div class="empty-state">No access.</div>'; return; }
-  const el = $('#tab-content');
+  if (authUser && authUser.role !== 'admin') { $('#user-list').innerHTML = '<div class="empty-state">No access.</div>'; return; }
+  const el = $('#user-list');
   el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading...</div>';
   try {
     const users = await api('/users');
-    let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div class="section-title" style="margin:0;border:0">Users</div><button class="btn btn-primary btn-sm" onclick="showUserModal()">+ Add User</button></div>';
-    if (!users || !users.length) { html += '<div class="empty-state">No users.</div>'; }
-    else {
-      for (const u of users) {
-        const serverCount = u.permissions ? Object.keys(u.permissions).length : 0;
-        html += `<div class="user-card">
-          <div class="user-info">
-            <div class="user-name-row">
-              <span class="user-avatar">${esc(u.username.charAt(0).toUpperCase())}</span>
-              <span class="user-name">${esc(u.username)}</span>
-              <span class="user-role-badge ${u.role}">${u.role}</span>
-            </div>
-            ${u.role === 'user' ? '<div class="user-perms">' + serverCount + ' server(s) configured</div>' : '<div class="user-perms">Full access to all servers</div>'}
+    if (!users || !users.length) { el.innerHTML = '<div class="empty-state">No users.</div>'; return; }
+    let html = '';
+    for (const u of users) {
+      const serverCount = u.permissions ? Object.keys(u.permissions).length : 0;
+      html += `<div class="user-card">
+        <div class="user-info">
+          <div class="user-name-row">
+            <span class="user-avatar">${esc(u.username.charAt(0).toUpperCase())}</span>
+            <span class="user-name">${esc(u.username)}</span>
+            <span class="user-role-badge ${u.role}">${u.role}</span>
           </div>
-          <div class="user-actions">
-            <button class="btn btn-sm" onclick="showUserModal('${escAttr(u.username)}')">Edit</button>
-            <button class="btn btn-sm btn-red" onclick="deleteUser('${escAttr(u.username)}')">Del</button>
-          </div>
-        </div>`;
-      }
+          ${u.role === 'user' ? '<div class="user-perms">' + serverCount + ' server(s) configured</div>' : '<div class="user-perms">Full access to all servers</div>'}
+        </div>
+        <div class="user-actions">
+          <button class="btn btn-sm" onclick="showUserModal('${escAttr(u.username)}')">Edit</button>
+          <button class="btn btn-sm btn-red" onclick="deleteUser('${escAttr(u.username)}')">Del</button>
+        </div>
+      </div>`;
     }
     el.innerHTML = html;
   } catch(e) { el.innerHTML = '<div class="empty-state">Error: '+esc(e.message)+'</div>'; }
@@ -575,6 +582,7 @@ function openModal(server) {
 }
 $('#modal-cancel').addEventListener('click',closeModal);
 $('#modal-overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
+$('#manage-users-btn').addEventListener('click',showUserManagement);
 function closeModal(){$('#modal-overlay').style.display='none';$('#modal-overlay').dataset.edit='';}
 
 /* ── Init ── */
