@@ -30,8 +30,10 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 	mux.HandleFunc("GET /api/servers/{id}/console", h.ConsoleWS)
 	mux.HandleFunc("GET /api/servers/{id}/logs", h.GetLogs)
 	mux.HandleFunc("GET /api/servers/{id}/files", h.ListFiles)
-	mux.HandleFunc("POST /api/servers/{id}/upload", h.UploadFile)
+	mux.HandleFunc("PUT /api/servers/{id}/files", h.RenameFile)
 	mux.HandleFunc("DELETE /api/servers/{id}/files", h.DeleteFile)
+	mux.HandleFunc("POST /api/servers/{id}/upload", h.UploadFile)
+	mux.HandleFunc("GET /api/servers/{id}/download", h.DownloadFile)
 
 	webRoot, err := fs.Sub(webFS, "web")
 	if err != nil {

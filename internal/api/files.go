@@ -9,11 +9,38 @@ import (
 	"strings"
 )
 
+func errBad(msg string) error  { return &apiErr{msg, http.StatusBadRequest} }
+func errNotFound(msg string) error { return &apiErr{msg, http.StatusNotFound} }
+
+type apiErr struct {
+	msg  string
+	code int
+}
+
+func (e *apiErr) Error() string { return e.msg }
+func (e *apiErr) Status() int   { return e.code }
+
 type fileEntry struct {
 	Name    string `json:"name"`
 	IsDir   bool   `json:"is_dir"`
 	Size    int64  `json:"size"`
 	ModTime string `json:"mod_time"`
+}
+
+func (h *Handler) safePath(id, subPath string) (string, error) {
+	inst := h.manager.Get(id)
+	if inst == nil {
+		return "", errNotFound("server not found")
+	}
+	subPath = filepath.Clean(subPath)
+	if strings.Contains(subPath, "..") {
+		return "", errBad("invalid path")
+	}
+	fullPath := filepath.Join(inst.Config.Path, subPath)
+	if !strings.HasPrefix(fullPath, inst.Config.Path) {
+		return "", errBad("invalid path")
+	}
+	return fullPath, nil
 }
 
 func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
@@ -25,20 +52,13 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subDir := r.URL.Query().Get("dir")
-	if subDir != "" {
-		subDir = filepath.Clean(subDir)
-		if strings.Contains(subDir, "..") {
-			http.Error(w, "invalid path", http.StatusBadRequest)
-			return
-		}
+	fullPath, err := h.safePath(id, subDir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	dir := inst.Config.Path
-	if subDir != "" {
-		dir = filepath.Join(dir, subDir)
-	}
-
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -79,13 +99,17 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	subDir := r.FormValue("dir")
 	destDir := inst.Config.Path
 	if subDir != "" {
-		destDir = filepath.Join(destDir, filepath.Clean(subDir))
+		s, err := h.safePath(id, subDir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		destDir = s
 	}
 
 	destPath := filepath.Join(destDir, header.Filename)
-
-	if !strings.HasPrefix(destPath, inst.Config.Path) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+	if _, err := os.Stat(destPath); err == nil {
+		http.Error(w, "file already exists", http.StatusConflict)
 		return
 	}
 
@@ -104,28 +128,92 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "file": header.Filename})
 }
 
-func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	inst := h.manager.Get(id)
-	if inst == nil {
-		http.Error(w, "server not found", http.StatusNotFound)
-		return
-	}
-
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
 		return
 	}
-	filePath = filepath.Clean(filePath)
-	fullPath := filepath.Join(inst.Config.Path, filePath)
 
-	if !strings.HasPrefix(fullPath, inst.Config.Path) {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+	fullPath, err := h.safePath(id, filePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := os.Remove(fullPath); err != nil {
+	f, err := os.Open(fullPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		http.Error(w, "cannot download directory", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(fullPath)+"\"")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	http.ServeContent(w, r, filepath.Base(fullPath), info.ModTime(), f)
+}
+
+func (h *Handler) RenameFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" || strings.Contains(req.Name, "/") {
+		http.Error(w, "invalid name", http.StatusBadRequest)
+		return
+	}
+
+	oldPath, err := h.safePath(id, filePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	newPath := filepath.Join(filepath.Dir(oldPath), req.Name)
+	if _, err := os.Stat(newPath); err == nil {
+		http.Error(w, "target already exists", http.StatusConflict)
+		return
+	}
+
+	if err := os.Rename(oldPath, newPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+
+	fullPath, err := h.safePath(id, filePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := os.RemoveAll(fullPath); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

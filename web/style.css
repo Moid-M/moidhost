@@ -445,6 +445,35 @@ html, body {
   margin-top: 20px;
 }
 
+/* Context menu */
+.ctx-menu {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.ctx-item:hover { background: var(--bg-3); }
+.ctx-danger { color: var(--red); }
+.ctx-danger:hover { background: rgba(248,81,73,0.15); }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

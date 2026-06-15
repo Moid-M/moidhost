@@ -245,6 +245,11 @@ async function loadFiles() {
         deleteFile(path);
       });
     });
+    list.querySelectorAll('[data-path]').forEach(el => {
+      el.addEventListener('contextmenu', e => {
+        showCtx(e, el.dataset.path, !!el.dataset.dir);
+      });
+    });
     if (bc) bc.querySelectorAll('.bc-link').forEach(el => {
       el.addEventListener('click', e => { e.preventDefault(); goDir(el.dataset.dir); });
     });
@@ -443,6 +448,58 @@ async function loadServers() {
 
 loadServers();
 setInterval(loadServers, 5000);
+
+/* ── Context menu ── */
+let ctxTarget = null;
+let ctxDir = false;
+
+function showCtx(e, path, isDir) {
+  e.preventDefault();
+  ctxTarget = path;
+  ctxDir = isDir;
+  const menu = $('#ctx-menu');
+  menu.style.display = 'block';
+  menu.style.left = Math.min(e.clientX, window.innerWidth - 160) + 'px';
+  menu.style.top = Math.min(e.clientY, window.innerHeight - 120) + 'px';
+  $$('.ctx-item', menu).forEach(el => {
+    el.style.display = el.dataset.action === 'download' && isDir ? 'none' : 'block';
+  });
+}
+
+function hideCtx() {
+  $('#ctx-menu').style.display = 'none';
+  ctxTarget = null;
+}
+
+$('#ctx-menu').addEventListener('click', async e => {
+  const btn = e.target.closest('.ctx-item');
+  if (!btn) return;
+  const action = btn.dataset.action;
+  hideCtx();
+  const path = ctxTarget;
+  if (!path) return;
+
+  try {
+    if (action === 'download') {
+      window.open(`/api/servers/${selectedId}/download?path=${encodeURIComponent(path)}`, '_blank');
+    } else if (action === 'rename') {
+      const name = prompt('New name:', path.split('/').pop());
+      if (!name || name === path.split('/').pop()) return;
+      await api(`/servers/${selectedId}/files?path=${encodeURIComponent(path)}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name }),
+      });
+      loadFiles();
+    } else if (action === 'delete') {
+      if (!confirm(`Delete "${path}"?`)) return;
+      await api(`/servers/${selectedId}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
+      loadFiles();
+    }
+  } catch (err) { alert(err.message); }
+});
+
+document.addEventListener('click', hideCtx);
+document.addEventListener('contextmenu', hideCtx);
 
 /* ── Tab click handlers ── */
 $$('.tab').forEach(tab => {
