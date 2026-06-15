@@ -5,9 +5,10 @@ let currentTab = 'dashboard';
 let ws = null;
 let consoleLines = [];
 let filePath = '';
-let statsHistory = [];
-let statsInterval = null;
 let editingFile = null;
+
+const statsCpu = [], statsMem = [], statsDisk = [];
+let statsInterval = null;
 
 const $ = (s, p = document) => p.querySelector(s);
 const $$ = (s, p = document) => [...p.querySelectorAll(s)];
@@ -27,7 +28,14 @@ function statusClass(s) { return (s || 'stopped').toLowerCase(); }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtBytes(b) { const u=['B','KB','MB','GB','TB']; let i=0,v=b; while(v>=1024&&i<u.length-1){v/=1024;i++} return v.toFixed(i>0?1:0)+' '+u[i]; }
-function fileIcon(name, isDir) { return isDir ? '📁' : '📄'; }
+
+function fmtTime(ticks) {
+  if (!ticks) return '0m';
+  const secs = Math.floor(ticks / 20);
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return h > 0 ? h+'h '+m+'m' : m+'m';
+}
 
 /* ── Custom Modal ── */
 function showModal(title, msg, opts = {}) {
@@ -51,7 +59,7 @@ function showModal(title, msg, opts = {}) {
     ov.querySelectorAll('[data-value]').forEach(b => {
       b.addEventListener('click', () => {
         ov.remove();
-        resolve(b.dataset.value === 'ok' ? true : false);
+        resolve(b.dataset.value === 'ok');
       });
     });
   });
@@ -106,12 +114,9 @@ function renderDashboard(s) {
     </div>
     <div class="system-stats">
       <h3 style="font-size:14px;margin-bottom:8px;color:var(--text-dim)">System Resources</h3>
-      <div class="stats-legend">
-        <span><span class="legend-dot" style="background:#ff6b9d"></span>CPU</span>
-        <span><span class="legend-dot" style="background:#3fb950"></span>RAM</span>
-        <span><span class="legend-dot" style="background:#58a6ff"></span>Disk</span>
-      </div>
-      <div class="stats-canvas-wrap"><canvas id="stats-canvas" height="120"></canvas></div>
+      <canvas class="stats-canvas" id="stats-cpu" height="120"></canvas>
+      <canvas class="stats-canvas" id="stats-mem" height="120"></canvas>
+      <canvas class="stats-canvas" id="stats-disk" height="120"></canvas>
     </div>`;
   loadStats(); startStatsPolling();
 }
@@ -140,68 +145,112 @@ window.action = function(act) {
   }).catch(e => showModal('Error', esc(e.message)));
 };
 
-/* ── Stats + Canvas Graph ── */
+/* ── Stats + Canvas Graphs ── */
+function drawGraph(canvas, label, color, data) {
+  if (!canvas || data.length < 2) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.offsetWidth * 2; canvas.width = w;
+  const h = 120 * 2; canvas.height = h;
+  ctx.clearRect(0, 0, w, h);
+  const pad = { t: 12, r: 8, b: 22, l: 36 };
+  const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
+  const pts = data.slice(-120);
+  const n = pts.length;
+
+  // label
+  ctx.fillStyle = '#8b949e'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(label, pad.l, pad.t - 2);
+
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let p = 0; p <= 100; p += 25) {
+    const y = pad.t + gh - (p/100)*gh;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
+  }
+
+  ctx.fillStyle = '#484f58'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+  for (let p = 0; p <= 100; p += 25) {
+    const y = pad.t + gh - (p/100)*gh;
+    ctx.fillText(p + '%', pad.l - 4, y + 3);
+  }
+
+  ctx.textAlign = 'center';
+  const xInterval = Math.max(1, Math.floor((n - 1) / 4));
+  for (let i = 0; i < n; i += xInterval) {
+    const x = pad.l + (i / (n - 1)) * gw;
+    const secs = Math.round((Date.now() - pts[i].t) / 1000);
+    ctx.fillText(secs + 's', x, h - 6);
+  }
+
+  // gradient fill under line
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gh);
+  grad.addColorStop(0, color + '30');
+  grad.addColorStop(1, color + '05');
+  ctx.beginPath();
+  pts.forEach((d, i) => {
+    const x = pad.l + (i / (n - 1 || 1)) * gw;
+    const y = pad.t + gh - (Math.min(Math.max(d.v, 0), 100) / 100) * gh;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  const lastX = pad.l + ((n-1) / (n - 1 || 1)) * gw;
+  ctx.lineTo(lastX, pad.t + gh);
+  ctx.lineTo(pad.l, pad.t + gh);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // smooth rounded line
+  ctx.beginPath();
+  pts.forEach((d, i) => {
+    const x = pad.l + (i / (n - 1 || 1)) * gw;
+    const y = pad.t + gh - (Math.min(Math.max(d.v, 0), 100) / 100) * gh;
+    if (i === 0) ctx.moveTo(x, y);
+    else {
+      const prev = pts[i-1];
+      const pv = pad.t + gh - (Math.min(Math.max(prev.v, 0), 100) / 100) * gh;
+      const px = pad.l + ((i-1) / (n - 1 || 1)) * gw;
+      const cpx = (px + x) / 2;
+      ctx.bezierCurveTo(cpx, pv, cpx, y, x, y);
+    }
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // latest value badge
+  const last = pts[pts.length-1];
+  const lx = pad.l + ((n-1) / (n - 1 || 1)) * gw;
+  const ly = pad.t + gh - (Math.min(Math.max(last.v, 0), 100) / 100) * gh;
+  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = color; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(Math.round(last.v) + '%', lx + 8, ly + 4);
+}
+
 async function loadStats() {
   try {
     const st = await api('/system/stats');
     const now = Date.now();
-    statsHistory.push({ t: now, cpu: st.cpu.percent, mem: st.memory.percent, disk: st.disk.percent });
-    if (statsHistory.length > 120) statsHistory = statsHistory.slice(-120);
-    drawGraph();
+    statsCpu.push({ t: now, v: st.cpu.percent });
+    statsMem.push({ t: now, v: st.memory.percent });
+    statsDisk.push({ t: now, v: st.disk.percent });
+    if (statsCpu.length > 120) statsCpu.shift();
+    if (statsMem.length > 120) statsMem.shift();
+    if (statsDisk.length > 120) statsDisk.shift();
+    drawGraph($('#stats-cpu'), 'CPU', '#ff6b9d', statsCpu);
+    drawGraph($('#stats-mem'), 'RAM', '#3fb950', statsMem);
+    drawGraph($('#stats-disk'), 'Disk', '#58a6ff', statsDisk);
   } catch(_) {}
 }
 
 function startStatsPolling() {
   if (statsInterval) clearInterval(statsInterval);
   statsInterval = setInterval(loadStats, 2000);
-}
-
-function drawGraph() {
-  const c = $('#stats-canvas');
-  if (!c || !statsHistory.length) return;
-  const ctx = c.getContext('2d');
-  const w = c.offsetWidth * 2; c.width = w;
-  const h = 120 * 2; c.height = h;
-  ctx.clearRect(0,0,w,h);
-  const pad = { t: 8, r: 8, b: 20, l: 36 };
-  const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
-  const maxPts = Math.min(statsHistory.length, 120);
-  const data = statsHistory.slice(-maxPts);
-  const colors = { cpu: '#ff6b9d', mem: '#3fb950', disk: '#58a6ff' };
-
-  function drawLine(key) {
-    ctx.beginPath();
-    data.forEach((d, i) => {
-      const x = pad.l + (i / (maxPts - 1 || 1)) * gw;
-      const y = pad.t + gh - (Math.min(Math.max(d[key], 0), 100) / 100) * gh;
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-    });
-    ctx.strokeStyle = colors[key];
-    ctx.lineWidth = 2;
-    ctx.stroke();
-  }
-
-  drawLine('cpu'); drawLine('mem'); drawLine('disk');
-
-  // Y axis labels
-  ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
-  for (let p = 0; p <= 100; p += 25) {
-    const y = pad.t + gh - (p/100)*gh;
-    ctx.fillText(p + '%', pad.l - 4, y + 3);
-    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
-  }
-
-  // X axis labels (time)
-  ctx.textAlign = 'center';
-  if (data.length > 1) {
-    const interval = Math.max(1, Math.floor((data.length - 1) / 4));
-    for (let i = 0; i < data.length; i += interval) {
-      const x = pad.l + (i / (data.length - 1)) * gw;
-      const secs = Math.round((Date.now() - data[i].t) / 1000);
-      ctx.fillText(secs + 's', x, h - 4);
-    }
-  }
 }
 
 /* ── Console ── */
@@ -281,6 +330,12 @@ function breadcrumb() {
   return html;
 }
 
+function fileHTML(isDir) {
+  return isDir
+    ? '<span class="file-icon dir"><span class="icon-folder"></span></span>'
+    : '<span class="file-icon file"><span class="icon-doc"></span></span>';
+}
+
 async function loadFiles() {
   const list = $('#file-list'); const bc = $('#file-breadcrumb');
   if (bc) bc.innerHTML = breadcrumb();
@@ -290,15 +345,14 @@ async function loadFiles() {
     const items = [];
     if (filePath) {
       const parent = filePath.split('/').slice(0,-1).join('/');
-      items.push('<div class="file-item" data-dir="'+parent+'" style="cursor:pointer"><div class="file-info"><span class="file-name">..</span></div></div>');
+      items.push('<div class="file-item is-dir" data-dir="'+parent+'"><div class="file-info"><span class="file-icon dir"><span class="icon-folder"></span></span><span class="file-name dir-link">..</span></div></div>');
     }
     for (const f of files) {
       const name = esc(f.name); const fullPath = filePath ? filePath+'/'+f.name : f.name;
-      const icon = f.is_dir ? '📁' : '📄';
       const sizeStr = f.is_dir ? '' : fmtBytes(f.size);
-      items.push(`<div class="file-item" data-path="${escAttr(fullPath)}" data-dir="${f.is_dir ? escAttr(fullPath) : ''}">
+      items.push(`<div class="file-item ${f.is_dir ? 'is-dir' : 'is-file'}" data-path="${escAttr(fullPath)}" data-dir="${f.is_dir ? escAttr(fullPath) : ''}">
         <div class="file-info">
-          <span class="file-icon ${f.is_dir ? 'dir' : 'file'}">${icon}</span>
+          ${fileHTML(f.is_dir)}
           <span class="file-name ${f.is_dir ? 'dir-link' : ''}">${name}</span>
         </div>
         <div class="file-actions">
@@ -308,14 +362,16 @@ async function loadFiles() {
       </div>`);
     }
     list.innerHTML = items.length ? items.join('') : '<div style="padding:20px;text-align:center;color:var(--text-dim)">Empty directory</div>';
-    list.querySelectorAll('[data-dir]').forEach(el => el.addEventListener('click', e => { if(!e.target.closest('.file-actions')) goDir(el.dataset.dir); }));
+    list.querySelectorAll('.file-item.is-dir').forEach(el => el.addEventListener('click', e => {
+      if(!e.target.closest('.file-actions')) goDir(el.dataset.dir);
+    }));
     list.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', async e => {
       const p = btn.closest('[data-path]').dataset.path;
       if (await showModal('Delete', 'Delete "'+p+'"?', {ok:'Delete',cancel:'Cancel'})) {
         try { await api('/servers/'+selectedId+'/files?path='+encodeURIComponent(p), {method:'DELETE'}); loadFiles(); } catch(e) { showModal('Error', esc(e.message)); }
       }
     }));
-    list.querySelectorAll('[data-path]:not([data-dir]) .file-name').forEach(el => {
+    list.querySelectorAll('.file-item.is-file .file-name').forEach(el => {
       el.style.cursor = 'pointer';
       el.title = 'Click to edit';
       el.addEventListener('click', e => {
@@ -324,7 +380,8 @@ async function loadFiles() {
         openEditor(path);
       });
     });
-    list.querySelectorAll('[data-path]').forEach(el => el.addEventListener('contextmenu', e => showCtx(e, el.dataset.path, !!el.dataset.dir)));
+    list.querySelectorAll('.file-item.is-file').forEach(el => el.addEventListener('contextmenu', e => showCtx(e, el.dataset.path, false)));
+    list.querySelectorAll('.file-item.is-dir[data-dir]').forEach(el => el.addEventListener('contextmenu', e => showCtx(e, el.dataset.path || el.dataset.dir, true)));
     if (bc) bc.querySelectorAll('.bc-link').forEach(el => el.addEventListener('click', e => { e.preventDefault(); goDir(el.dataset.dir); }));
   } catch(e) { list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--red)">Error: '+esc(e.message)+'</div>'; }
 }
@@ -358,12 +415,6 @@ async function uploadFiles(files) {
   hideProgress(); loadFiles();
 }
 
-window.deleteFile = async function(path) {
-  if (await showModal('Delete', 'Delete "'+path+'"?', {ok:'Delete',cancel:'Cancel'})) {
-    try { await api('/servers/'+selectedId+'/files?path='+encodeURIComponent(path), {method:'DELETE'}); loadFiles(); } catch(e) { showModal('Error', esc(e.message)); }
-  }
-};
-
 /* ── File Editor ── */
 async function openEditor(path) {
   editingFile = path;
@@ -393,7 +444,8 @@ window.cancelEditor = function() { editingFile = null; renderFiles(servers.find(
 /* ── Context Menu ── */
 let ctxTarget = null, ctxDir = false;
 function showCtx(e, path, isDir) {
-  e.preventDefault(); ctxTarget = path; ctxDir = isDir;
+  e.preventDefault(); e.stopPropagation();
+  ctxTarget = path; ctxDir = isDir;
   const m = $('#ctx-menu'); m.style.display = 'block';
   m.style.left = Math.min(e.clientX, window.innerWidth-160)+'px';
   m.style.top = Math.min(e.clientY, window.innerHeight-120)+'px';
@@ -419,7 +471,6 @@ $('#ctx-menu').addEventListener('click', async e => {
   } catch(e) { showModal('Error', esc(e.message)); }
 });
 document.addEventListener('click', hideCtx);
-document.addEventListener('contextmenu', hideCtx);
 
 /* ── Settings ── */
 function renderSettings(s) {
@@ -462,20 +513,34 @@ async function renderPlayers(s) {
   el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading players...</div>';
   try {
     const players = await api('/servers/'+selectedId+'/players');
-    const isRunning = s.status === 'running';
     if (!players || !players.length) {
-      el.innerHTML = '<div class="players-empty">No players found.<br>'+(isRunning ? 'Players will appear here when they join the server.' : 'Start the server to see online players.')+'</div>';
+      el.innerHTML = '<div class="players-empty">No players found.<br>'+(s.status==='running'?'Players will appear here when they join the server.':'Start the server to see online players.')+'</div>';
       return;
     }
     el.innerHTML = '<div style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">'+players.length+' known player(s)</div>' +
-      players.map(p => `<div class="player-item">
-        <div class="player-avatar">${esc(p.name.charAt(0).toUpperCase())}</div>
-        <div class="player-info">
-          <div class="player-name">${esc(p.name)}</div>
-          ${p.uuid ? '<div class="player-uuid">'+esc(p.uuid)+'</div>' : ''}
-        </div>
-        <span class="player-badge ${p.uuid ? 'offline' : 'online'}">${p.uuid ? 'Offline' : 'Online'}</span>
-      </div>`).join('');
+      players.map(p => {
+        const avatar = esc(p.name.charAt(0).toUpperCase());
+        const badgeCls = p.online ? 'online' : 'offline';
+        const badgeTxt = p.online ? 'Online' : 'Offline';
+        const stats = p.stats;
+        return `<div class="player-item">
+          <div class="player-avatar">${avatar}</div>
+          <div class="player-info">
+            <div class="player-name-row">
+              <div class="player-name">${esc(p.name)}</div>
+              <span class="player-badge ${badgeCls}">${badgeTxt}</span>
+            </div>
+            ${p.uuid ? '<div class="player-uuid">'+esc(p.uuid)+'</div>' : ''}
+            ${stats ? '<div class="player-stats">' +
+              '<span title="Play Time"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>'+fmtTime(stats.play_time)+'</span>' +
+              '<span title="Distance Walked"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'+(stats.walk_dist/1000).toFixed(1)+'km</span>' +
+              '<span title="Mob Kills"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'+stats.kills+'</span>' +
+              '<span title="Damage Dealt"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'+stats.damage+'</span>' +
+              '<span title="Deaths" class="stat-death"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'+stats.deaths+'</span>' +
+            '</div>' : '<div class="player-stats"><span class="no-stats">No stats yet</span></div>'}
+          </div>
+        </div>`;
+      }).join('');
   } catch(e) {
     el.innerHTML = '<div class="players-empty">Error loading players: '+esc(e.message)+'</div>';
   }
@@ -530,7 +595,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeModal(); hideCtx(); }
 });
 
-// Close stats polling when switching away from dashboard
 const origShowTab = showTab;
 showTab = function(name) {
   if (name !== 'dashboard' && statsInterval) { clearInterval(statsInterval); statsInterval = null; }

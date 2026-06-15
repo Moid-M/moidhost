@@ -188,9 +188,19 @@ func (h *Handler) ServerPlayers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	type playerStats struct {
+		PlayTime int `json:"play_time"`
+		Deaths   int `json:"deaths"`
+		Kills    int `json:"kills"`
+		Damage   int `json:"damage"`
+		WalkDist int `json:"walk_dist"`
+	}
+
 	type playerEntry struct {
-		Name string `json:"name"`
-		UUID string `json:"uuid"`
+		Name     string       `json:"name"`
+		UUID     string       `json:"uuid"`
+		Online   bool         `json:"online"`
+		Stats    *playerStats `json:"stats,omitempty"`
 	}
 
 	players := []playerEntry{}
@@ -204,32 +214,57 @@ func (h *Handler) ServerPlayers(w http.ResponseWriter, r *http.Request) {
 		}
 		if json.Unmarshal(data, &cached) == nil {
 			for _, p := range cached {
-				players = append(players, playerEntry{Name: p.Name, UUID: p.UUID})
+				entry := playerEntry{Name: p.Name, UUID: p.UUID}
+				// Read stats from world/stats/<uuid>.json
+				statsPath := filepath.Join(inst.Config.Path, "world", "stats", p.UUID+".json")
+				if sd, err := os.ReadFile(statsPath); err == nil {
+					var raw struct {
+						Stats struct {
+							Custom struct {
+								PlayTime int `json:"minecraft:play_time"`
+								Deaths   int `json:"minecraft:deaths"`
+								Kills    int `json:"minecraft:mob_kills"`
+								Damage   int `json:"minecraft:damage_dealt"`
+								WalkDist int `json:"minecraft:walk_one_cm"`
+							} `json:"minecraft:custom"`
+						} `json:"stats"`
+					}
+					if json.Unmarshal(sd, &raw) == nil {
+						entry.Stats = &playerStats{
+							PlayTime: raw.Stats.Custom.PlayTime,
+							Deaths:   raw.Stats.Custom.Deaths,
+							Kills:    raw.Stats.Custom.Kills,
+							Damage:   raw.Stats.Custom.Damage,
+							WalkDist: raw.Stats.Custom.WalkDist,
+						}
+					}
+				}
+				players = append(players, entry)
 			}
 		}
 	}
 
-	// If server is running, get online players from the console
+	// If server is running, mark online players from the console
 	if inst.Status == server.StatusRunning {
 		lines, _ := h.manager.GetLogs(id)
 		for i := len(lines) - 1; i >= 0; i-- {
 			line := lines[i]
 			if strings.Contains(line, "There are") && strings.Contains(line, "players online") {
-				// Parse: "There are 3 of max of 20 players online: Steve, Alex, Notch"
 				parts := strings.SplitN(line, ":", 2)
 				if len(parts) == 2 {
 					for _, name := range strings.Split(parts[1], ",") {
 						name = strings.TrimSpace(name)
 						if name != "" {
 							found := false
-							for _, p := range players {
-								if p.Name == name {
+							for j := range players {
+								if players[j].Name == name {
+									players[j].Online = true
 									found = true
 									break
 								}
 							}
 							if !found {
-								players = append(players, playerEntry{Name: name, UUID: ""})
+								players = append(players, playerEntry{Name: name, Online: true})
 							}
 						}
 					}
