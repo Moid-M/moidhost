@@ -67,6 +67,11 @@ func startServer() {
 	if env := os.Getenv("MOIDHOST_DATA"); env != "" {
 		dataDir = env
 	}
+	absDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		log.Fatalf("cannot resolve data directory: %v", err)
+	}
+	dataDir = absDir
 	configPath := filepath.Join(dataDir, "config.json")
 	serversDir := filepath.Join(dataDir, "servers")
 
