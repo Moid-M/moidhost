@@ -55,8 +55,15 @@ rm -rf "$TMP"
 
 echo "  Binary installed to $BINDIR/moidhost"
 
-# Create data directory
+# Create dedicated user
+if ! id -u moidhost &>/dev/null; then
+  useradd --system --user-group --home-dir "$DATADIR" --shell /usr/sbin/nologin moidhost
+  echo "  System user 'moidhost' created."
+fi
+
+# Create and chown data directory
 mkdir -p "$DATADIR"
+chown -R moidhost:moidhost "$DATADIR"
 echo "  Data directory: $DATADIR"
 
 # Install systemd service
@@ -71,8 +78,8 @@ ExecStart=$BINDIR/moidhost
 Environment=MOIDHOST_DATA=$DATADIR
 Restart=on-failure
 RestartSec=5
-User=nobody
-Group=nogroup
+User=moidhost
+Group=moidhost
 
 [Install]
 WantedBy=multi-user.target

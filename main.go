@@ -60,7 +60,9 @@ func startServer() {
 	configPath := filepath.Join(dataDir, "config.json")
 	serversDir := filepath.Join(dataDir, "servers")
 
-	os.MkdirAll(serversDir, 0755)
+	if err := os.MkdirAll(serversDir, 0755); err != nil {
+		log.Fatalf("cannot create data directory %s: %v\nTry: sudo chown -R $(whoami) %s", serversDir, err, dataDir)
+	}
 
 	store := config.NewStore(configPath)
 	manager, err := server.NewManager(store)
