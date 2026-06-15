@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -165,6 +166,19 @@ func (m *Manager) Start(id string) error {
 		return fmt.Errorf("server %s is already running", id)
 	}
 
+	// Check Java is available
+	if _, err := exec.LookPath("java"); err != nil {
+		m.mu.Unlock()
+		return fmt.Errorf("java not found in PATH. Install Java (e.g. openjdk-21-jre-headless)")
+	}
+
+	// Check jar file exists
+	jarPath := filepath.Join(inst.Config.Path, inst.Config.JarFile)
+	if _, err := os.Stat(jarPath); os.IsNotExist(err) {
+		m.mu.Unlock()
+		return fmt.Errorf("server jar not found: %s — upload it via the Files tab first", inst.Config.JarFile)
+	}
+
 	inst.Status = StatusStarting
 	proc := process.NewServerProcess()
 	inst.Process = proc
@@ -181,6 +195,16 @@ func (m *Manager) Start(id string) error {
 		inst.Status = StatusCrashed
 		m.mu.Unlock()
 		return err
+	}
+
+	// Wait briefly to catch immediate crashes (bad jar, Java error, etc.)
+	time.Sleep(500 * time.Millisecond)
+	if !proc.Running() {
+		m.mu.Lock()
+		inst.Status = StatusCrashed
+		inst.Process = nil
+		m.mu.Unlock()
+		return fmt.Errorf("server process exited immediately — check the console logs for details")
 	}
 
 	m.mu.Lock()

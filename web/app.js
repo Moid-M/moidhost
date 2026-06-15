@@ -115,13 +115,14 @@ function renderConsole(s) {
   const el = $('#tab-content');
   el.innerHTML = `
     <div class="console-container">
-      <div class="console-output" id="console-output"></div>
+      <div class="console-output" id="console-output">${s.status !== 'running' ? '<div class="line" style="color:var(--text-dim)">Server is not running. Start it from the Dashboard tab.</div>' : ''}</div>
       <div class="console-input-row">
-        <input type="text" id="console-input" placeholder="Type a command..." autocomplete="off">
-        <button class="btn btn-primary btn-sm" id="console-send">Send</button>
+        <input type="text" id="console-input" placeholder="${s.status === 'running' ? 'Type a command...' : 'Start the server first'}" autocomplete="off" ${s.status !== 'running' ? 'disabled' : ''}>
+        <button class="btn btn-primary btn-sm" id="console-send" ${s.status !== 'running' ? 'disabled' : ''}>Send</button>
       </div>
     </div>
   `;
+  if (s.status !== 'running') return;
   const out = $('#console-output');
   if (consoleLines.length) out.innerHTML = consoleLines.map(l => `<div class="line">${esc(l)}</div>`).join('');
   out.scrollTop = out.scrollHeight;
@@ -442,6 +443,11 @@ async function loadServers() {
 
 loadServers();
 setInterval(loadServers, 5000);
+
+/* ── Tab click handlers ── */
+$$('.tab').forEach(tab => {
+  tab.addEventListener('click', () => showTab(tab.dataset.tab));
+});
 
 /* ── Keyboard shortcuts ── */
 document.addEventListener('keydown', e => {
