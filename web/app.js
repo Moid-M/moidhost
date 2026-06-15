@@ -14,6 +14,7 @@ let authToken = null;
 let authUser = null;
 
 let serversCollapsed = false;
+let loadInterval = null;
 
 const $ = (s, p = document) => p.querySelector(s);
 const $$ = (s, p = document) => [...p.querySelectorAll(s)];
@@ -22,7 +23,10 @@ function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...opts.headers };
   if (authToken) headers['Authorization'] = 'Bearer ' + authToken;
   return fetch(API + path, { headers, ...opts }).then(r => {
-    if (r.status === 401) { logout(); throw new Error('unauthorized'); }
+    if (r.status === 401) {
+      if (authToken) logout();
+      throw new Error('unauthorized');
+    }
     if (r.status === 204) return null;
     if (!r.ok) return r.text().then(t => { throw new Error(t) });
     return r.json();
@@ -31,57 +35,38 @@ function api(path, opts = {}) {
 
 /* ── Auth ── */
 function loginPage() {
-  const el = $('#login-page');
-  if (!el) return;
-  el.style.display = 'flex';
+  $('#login-page').style.display = 'flex';
   $('#app').style.display = 'none';
-  el.innerHTML = `
-    <div class="login-box">
-      <h1 class="login-logo">moidhost</h1>
-      <p class="login-sub">Minecraft Server Manager</p>
-      <form id="login-form">
-        <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="login-user" autocomplete="username" required>
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="login-pass" autocomplete="current-password" required>
-        </div>
-        <div id="login-error" class="login-error"></div>
-        <button type="submit" class="btn btn-primary" id="login-btn" style="width:100%;padding:10px">Sign In</button>
-      </form>
-      <p class="login-hint">Default credentials were set during installation.</p>
-    </div>`;
-  $('#login-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const btn = $('#login-btn'); btn.disabled = true; btn.textContent = 'Signing in...';
-    $('#login-error').textContent = '';
+  $('#login-error').textContent = '';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const btn = $('#login-btn'); btn.disabled = true; btn.textContent = 'Signing in...';
+  $('#login-error').textContent = '';
+  try {
+    const res = await fetch(API + '/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('#login-user').value, password: $('#login-pass').value }),
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(t); }
+    const data = await res.json();
+    authToken = data.token;
+    sessionStorage.setItem('moidhost_token', authToken);
+    authUser = { username: data.username, role: data.role };
     try {
-      const res = await fetch(API + '/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: $('#login-user').value, password: $('#login-pass').value }),
-      });
-      if (!res.ok) { const t = await res.text(); throw new Error(t); }
-      const data = await res.json();
-      authToken = data.token;
-      sessionStorage.setItem('moidhost_token', authToken);
-      authUser = { username: data.username, role: data.role };
-      // Fetch permissions
-      try {
-        const info = await fetch(API + '/auth/validate', { headers: { 'Authorization': 'Bearer ' + authToken } });
-        if (info.ok) {
-          const infoData = await info.json();
-          authUser.permissions = infoData.permissions || {};
-        }
-      } catch(_) {}
-      initApp();
-    } catch(e) {
-      $('#login-error').textContent = e.message || 'Login failed';
-      btn.disabled = false; btn.textContent = 'Sign In';
-    }
-  });
+      const info = await fetch(API + '/auth/validate', { headers: { 'Authorization': 'Bearer ' + authToken } });
+      if (info.ok) {
+        const infoData = await info.json();
+        authUser.permissions = infoData.permissions || {};
+      }
+    } catch(_) {}
+    initApp();
+  } catch(e) {
+    $('#login-error').textContent = e.message || 'Login failed';
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
 }
 
 function logout() {
@@ -89,6 +74,7 @@ function logout() {
   sessionStorage.removeItem('moidhost_token');
   if (ws) { ws.close(); ws = null; }
   if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+  if (loadInterval) { clearInterval(loadInterval); loadInterval = null; }
   loginPage();
 }
 
@@ -102,8 +88,8 @@ async function initApp() {
         if (!info.ok) throw new Error('invalid');
         const data = await info.json();
         authUser = { username: data.username, role: data.role, permissions: data.permissions || {} };
-      } catch(_) { authToken = null; sessionStorage.removeItem('moidhost_token'); return loginPage(); }
-    } else { return loginPage(); }
+      } catch(_) { authToken = null; sessionStorage.removeItem('moidhost_token'); loginPage(); return; }
+    } else { loginPage(); return; }
   }
 
   $('#login-page').style.display = 'none';
@@ -114,7 +100,8 @@ async function initApp() {
     else $('#users-tab').style.display = 'none';
   }
   loadServers();
-  setInterval(loadServers, 5000);
+  if (loadInterval) clearInterval(loadInterval);
+  loadInterval = setInterval(loadServers, 5000);
   $$('.tab').forEach(tab => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
 }
 
@@ -621,4 +608,5 @@ function fmtDate(s){if(!s)return'';const d=new Date(s);return d.toLocaleDateStri
 function showModal(title,msg,opts={}){return new Promise(resolve=>{const ex=$('.custom-prompt-overlay');if(ex)ex.remove();const ov=document.createElement('div');ov.className='custom-prompt-overlay';ov.innerHTML='<div class="custom-prompt"><h3>'+esc(title)+'</h3><p>'+msg+'</p><div class="custom-prompt-actions">'+(opts.cancel?'<button class="btn" data-value="cancel">'+esc(opts.cancel)+'</button>':'')+'<button class="btn btn-primary" data-value="ok">'+esc(opts.ok||'OK')+'</button></div></div>';document.body.appendChild(ov);ov.addEventListener('click',e=>{if(e.target===ov){ov.remove();resolve(false);}});ov.querySelectorAll('[data-value]').forEach(b=>{b.addEventListener('click',()=>{ov.remove();resolve(b.dataset.value==='ok');});});});}
 
 /* ── Boot ── */
+document.getElementById('login-form').addEventListener('submit', handleLogin);
 initApp();
