@@ -2,6 +2,10 @@
 
 Self-hosted Minecraft server manager. Single binary, zero dependencies.
 
+```bash
+curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
+```
+
 ## Features
 
 - **Multiple servers** — run several Minecraft servers on one machine
@@ -13,11 +17,12 @@ Self-hosted Minecraft server manager. Single binary, zero dependencies.
 ## Quick start
 
 ```bash
-# Download and run (no install needed)
-./moidhost
+# One-liner: download and install as a systemd service
+curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
 
-# Or install as a systemd service
-sudo ./install.sh
+# Or just download and run directly
+curl -sL https://github.com/Moid-M/moidhost/releases/latest/download/moidhost-linux-amd64 -o moidhost \
+  && chmod +x moidhost && ./moidhost
 ```
 
 Open `http://localhost:8080` in your browser.
@@ -39,6 +44,12 @@ The server reads `config.json` from the current directory (or `$MOIDHOST_DATA`).
 | `MOIDHOST_DATA` | `.` | Directory for config.json and server data |
 
 ## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
+```
+
+Or if you already have the repo cloned:
 
 ```bash
 sudo ./install.sh
