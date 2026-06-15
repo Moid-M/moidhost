@@ -11,8 +11,9 @@
   --border: #30363d;
   --text: #e6edf3;
   --text-dim: #8b949e;
-  --accent: #58a6ff;
-  --accent-hover: #79c0ff;
+  --accent: #ff6b9d;
+  --accent-hover: #ff8db5;
+  --accent-glow: rgba(255, 107, 157, 0.15);
   --green: #3fb950;
   --red: #f85149;
   --yellow: #d29922;
@@ -52,8 +53,10 @@ html, body {
 
 .sidebar-header h1 {
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent);
+  text-shadow: 0 0 12px var(--accent-glow);
+  letter-spacing: 0.5px;
 }
 
 .sidebar-actions {
@@ -341,7 +344,7 @@ html, body {
 .drop-zone:hover,
 .drop-zone.drag-over {
   border-color: var(--accent);
-  background: rgba(88, 166, 255, 0.05);
+  background: var(--accent-glow);
 }
 
 .drop-zone p { margin-bottom: 8px; }

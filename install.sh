@@ -81,6 +81,30 @@ UNIT
 systemctl daemon-reload
 echo "  Systemd service installed (moidhost.service)"
 
+# Auto-install Java if missing
+if ! command -v java &>/dev/null; then
+  echo ""
+  echo "==> Java not found. Installing OpenJDK 21..."
+  if command -v apt-get &>/dev/null; then
+    apt-get update -qq
+    apt-get install -y -qq openjdk-21-jre-headless
+  elif command -v dnf &>/dev/null; then
+    dnf install -y -q java-21-openjdk-headless
+  elif command -v yum &>/dev/null; then
+    yum install -y -q java-21-openjdk-headless
+  elif command -v pacman &>/dev/null; then
+    pacman -S --noconfirm jre21-openjdk-headless
+  elif command -v apk &>/dev/null; then
+    apk add openjdk21-jre-headless
+  else
+    echo "  WARNING: Could not detect package manager. Install Java manually."
+    echo "  Debian/Ubuntu: sudo apt-get install openjdk-21-jre-headless"
+  fi
+  echo "  Java installed."
+else
+  echo "  Java found: $(java -version 2>&1 | head -1)"
+fi
+
 echo ""
 echo "==> Installation complete!"
 echo ""
