@@ -1,0 +1,5 @@
+moidhost
+config.json
+data/
+*.log
+.DS_Store
