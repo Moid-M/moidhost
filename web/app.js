@@ -71,6 +71,19 @@ function showModal(title, msg, opts = {}) {
   });
 }
 
+/* ── Mobile Sidebar ── */
+function toggleSidebar() {
+  const s = $('#sidebar'); const o = $('#sidebar-overlay');
+  s.classList.toggle('open'); o.classList.toggle('open');
+  if (s.classList.contains('open')) o.onclick = () => closeSidebar();
+}
+function closeSidebar() {
+  $('#sidebar').classList.remove('open');
+  $('#sidebar-overlay').classList.remove('open');
+}
+
+function isMobile() { return window.innerWidth <= 768; }
+
 /* ── Server List ── */
 function renderSidebar() {
   const el = $('#server-list');
@@ -84,7 +97,7 @@ function renderSidebar() {
 }
 
 function selectServer(id) {
-  selectedId = id; closeConsole();
+  selectedId = id; closeConsole(); closeSidebar();
   $('#welcome').style.display = 'none'; $('#server-view').style.display = 'flex';
   renderSidebar(); showTab(currentTab);
 }
@@ -436,6 +449,7 @@ async function loadFiles() {
         </div>
         <div class="file-actions">
           ${sizeStr ? '<span class="file-size">'+sizeStr+'</span>' : ''}
+          <button class="file-ctx-btn" onclick="event.stopPropagation();showCtx(event, '${escAttr(fullPath)}', ${f.is_dir})">⋮</button>
           <button class="btn btn-sm delete-btn">Del</button>
         </div>
       </div>`);
@@ -573,15 +587,25 @@ let ctxTarget = null, ctxDir = false;
 function showCtx(e, path, isDir) {
   e.preventDefault(); e.stopPropagation();
   ctxTarget = path; ctxDir = isDir;
-  const m = $('#ctx-menu'); m.style.display = 'block';
-  m.style.left = Math.min(e.clientX, window.innerWidth-160)+'px';
-  m.style.top = Math.min(e.clientY, window.innerHeight-120)+'px';
-  $$('.ctx-item', m).forEach(el => el.style.display = el.dataset.action==='download'&&isDir ? 'none' : 'block');
+  const m = $('#ctx-menu');
+  $$('.ctx-item', m).forEach(el => {
+    el.style.display = el.dataset.action === 'download' && isDir ? 'none' : 'block';
+  });
+  const cancel = $('#ctx-cancel');
+  if (cancel) cancel.style.display = isMobile() ? 'block' : 'none';
+  if (isMobile()) {
+    m.style.left = '0';
+    m.style.top = 'auto';
+  } else {
+    m.style.left = Math.min(e.clientX, window.innerWidth-160)+'px';
+    m.style.top = Math.min(e.clientY, window.innerHeight-120)+'px';
+  }
+  m.style.display = 'block';
 }
 function hideCtx() { $('#ctx-menu').style.display = 'none'; ctxTarget = null; }
 
 $('#ctx-menu').addEventListener('click', async e => {
-  const btn = e.target.closest('.ctx-item'); if(!btn) return;
+  const btn = e.target.closest('.ctx-item'); if(!btn || btn.id === 'ctx-cancel') return;
   const action = btn.dataset.action; const path = ctxTarget; hideCtx(); if(!path) return;
   try {
     if (action === 'download') window.open('/api/servers/'+selectedId+'/download?path='+encodeURIComponent(path), '_blank');
@@ -598,6 +622,7 @@ $('#ctx-menu').addEventListener('click', async e => {
   } catch(e) { showModal('Error', esc(e.message)); }
 });
 document.addEventListener('click', hideCtx);
+window.addEventListener('resize', () => { if (!isMobile()) hideCtx(); });
 
 /* ── Settings ── */
 function renderSettings(s) {

@@ -1240,7 +1240,284 @@ html, body {
 .ctx-danger:hover { background: rgba(248,81,73,0.15); }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* ── Hamburger / Sidebar toggle ── */
+#sidebar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 22px;
+  padding: 4px 8px;
+  cursor: pointer;
+  line-height: 1;
+}
+#sidebar-overlay {
+  display: none;
+}
+
+/* ── Context menu item icons for mobile ── */
+.ctx-item .ctx-icon { display: none; }
+
+/* ── Mobile file action buttons ── */
+.file-ctx-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+/* ── Mobile Responsive ── */
+@media (max-width: 768px) {
+  :root {
+    --sidebar-width: 280px;
+  }
+
+  #sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 50;
+  }
+  #sidebar-overlay.open {
+    display: block;
+  }
+
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    will-change: transform;
+    border-right: 1px solid var(--border);
+  }
+  #sidebar.open {
+    transform: translateX(0);
+  }
+
+  #main-content {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .view-header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .view-header h2 {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 160px;
+  }
+
+  .tabs {
+    padding: 0 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+
+  .tab {
+    padding: 10px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  #tab-content {
+    padding: 12px;
+  }
+
+  /* Dashboard */
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .dashboard-actions {
+    flex-wrap: wrap;
+  }
+  .dashboard-actions .btn {
+    flex: 1;
+    min-width: 0;
+  }
+  .stats-canvas { height: 100px; }
+
+  /* Console */
+  .console-output {
+    min-height: 200px;
+    font-size: 11px;
+  }
+  .console-input-row input {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  /* Files */
+  .file-item {
+    padding: 10px 10px;
+    font-size: 13px;
+  }
+  .file-item .file-info {
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  }
+  .file-item .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+  }
+  .file-item .file-actions .btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  .file-ctx-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .drop-zone {
+    padding: 20px;
+  }
+  .drop-zone p { font-size: 13px; }
+
+  /* File editor */
+  .editor-gutter { width: 32px; }
+  .gutter-line {
+    font-size: 10px;
+    padding: 0 5px;
+  }
+  .editor-wrap textarea {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  .file-editor-header .file-path {
+    font-size: 11px;
+  }
+
+  /* World tab */
+  .world-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .world-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .world-actions .btn {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+  .world-upload { padding: 18px; }
+
+  /* Backups tab */
+  .backup-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .backup-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .backup-actions .btn {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+  .folder-item { padding: 10px 8px; }
+  .backup-form { padding: 12px; }
+
+  /* Players tab */
+  .player-main { padding: 12px; }
+  .player-avatar { width: 36px; height: 36px; font-size: 15px; }
+  .player-name { font-size: 14px; }
+  .player-detail { padding: 10px; }
+  .detail-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .detail-item { padding: 6px 8px; }
+  .detail-value { font-size: 13px; }
+
+  /* Settings */
+  .settings-form { max-width: 100%; }
+
+  /* Context menu as bottom sheet */
+  #ctx-menu {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+    padding: 8px 8px env(safe-area-inset-bottom, 8px);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  }
+  .ctx-item {
+    padding: 12px 14px;
+    font-size: 14px;
+    text-align: center;
+    border-radius: 8px;
+  }
+  .ctx-item .ctx-icon {
+    display: inline;
+    margin-right: 8px;
+  }
+  #ctx-menu .ctx-cancel {
+    display: block !important;
+    margin-top: 4px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+
+  /* Modals full-width */
+  .modal { max-width: 100%; margin: 0 12px; }
+  .custom-prompt { max-width: 100%; margin: 0 12px; }
+
+  /* Graph tooltip larger on touch */
+  .graph-tooltip {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  /* Online players */
+  .online-player {
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+
+  /* General touch-friendly */
+  .btn { min-height: 36px; }
+  .btn-sm { min-height: 32px; }
+  input, select, textarea { font-size: 16px !important; }
+}
