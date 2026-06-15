@@ -98,11 +98,13 @@ function showTab(name) {
   $('#server-name').textContent = s.name;
   $('#server-status').className = 'status-badge ' + statusClass(s.status);
   $('#server-status').textContent = s.status;
-  const tabMap = { dashboard: renderDashboard, console: renderConsole, files: renderFiles, world: renderWorld, players: renderPlayers, settings: renderSettings };
+  const tabMap = { dashboard: renderDashboard, console: renderConsole, files: renderFiles, world: renderWorld, backups: renderBackups, players: renderPlayers, settings: renderSettings };
   (tabMap[name] || (() => {}))(s);
 }
 
 /* ── Dashboard ── */
+let lastStats = null;
+
 function renderDashboard(s) {
   const el = $('#tab-content');
   const running = s.status === 'running';
@@ -119,12 +121,16 @@ function renderDashboard(s) {
       <div class="dashboard-card"><div class="label">Server Jar</div><div class="value" style="font-size:13px;font-family:var(--font-mono)">${esc(s.jar_file)}</div></div>
     </div>
     <div class="system-stats">
-      <h3 style="font-size:14px;margin-bottom:8px;color:var(--text-dim)">System Resources</h3>
-      <canvas class="stats-canvas" id="stats-cpu" height="120"></canvas>
-      <canvas class="stats-canvas" id="stats-mem" height="120"></canvas>
-      <canvas class="stats-canvas" id="stats-disk" height="120"></canvas>
+      <div class="stat-graph"><div class="graph-label">CPU</div><canvas class="stats-canvas" id="stats-cpu" height="140"></canvas></div>
+      <div class="stat-graph"><div class="graph-label">RAM</div><canvas class="stats-canvas" id="stats-mem" height="140"></canvas></div>
+      <div class="stat-graph"><div class="graph-label">DISK</div><canvas class="stats-canvas" id="stats-disk" height="140"></canvas></div>
+    </div>
+    <div class="online-section">
+      <div class="online-header">Online Players <span class="online-count" id="online-count">0</span></div>
+      <div class="online-list" id="online-list"><span class="online-empty">No players online</span></div>
     </div>`;
   loadStats(); startStatsPolling();
+  pollOnline();
 }
 
 window.startServer = async function() {
@@ -152,33 +158,38 @@ window.action = function(act) {
 };
 
 /* ── Stats + Canvas Graphs ── */
-function drawGraph(canvas, label, color, data) {
+function drawGraph(canvas, label, color, data, totalBytes) {
   if (!canvas || data.length < 2) return;
   const ctx = canvas.getContext('2d');
-  const w = canvas.offsetWidth * 2; canvas.width = w;
-  const h = 120 * 2; canvas.height = h;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = 2;
+  const w = rect.width * dpr; canvas.width = w;
+  const h = 140 * dpr; canvas.height = h;
   ctx.clearRect(0, 0, w, h);
-  const pad = { t: 12, r: 8, b: 22, l: 36 };
+  const pad = { t: 8, r: 10, b: 24, l: 48 };
   const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
   const pts = data.slice(-120);
   const n = pts.length;
 
-  ctx.fillStyle = '#8b949e'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(label, pad.l, pad.t - 2);
-
-  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  // Grid lines at 25% intervals
+  ctx.strokeStyle = '#1c2128'; ctx.lineWidth = 1 * dpr;
   for (let p = 0; p <= 100; p += 25) {
     const y = pad.t + gh - (p/100)*gh;
     ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); ctx.stroke();
   }
 
-  ctx.fillStyle = '#484f58'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+  // Y-axis labels with real values for RAM/Disk
+  ctx.fillStyle = '#484f58'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
   for (let p = 0; p <= 100; p += 25) {
     const y = pad.t + gh - (p/100)*gh;
-    ctx.fillText(p + '%', pad.l - 4, y + 3);
+    let label = p + '%';
+    if (totalBytes && p === 100) label = fmtBytes(totalBytes);
+    else if (totalBytes) label = fmtBytes(Math.round(totalBytes * p / 100));
+    ctx.fillText(label, pad.l - 6, y + 3);
   }
 
-  ctx.textAlign = 'center';
+  // X-axis time labels
+  ctx.fillStyle = '#484f58'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
   const xInterval = Math.max(1, Math.floor((n - 1) / 4));
   for (let i = 0; i < n; i += xInterval) {
     const x = pad.l + (i / (n - 1)) * gw;
@@ -186,57 +197,61 @@ function drawGraph(canvas, label, color, data) {
     ctx.fillText(secs + 's', x, h - 6);
   }
 
+  // Gradient fill
   const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gh);
-  grad.addColorStop(0, color + '30');
-  grad.addColorStop(1, color + '05');
+  grad.addColorStop(0, color + '25');
+  grad.addColorStop(1, color + '03');
   ctx.beginPath();
   pts.forEach((d, i) => {
     const x = pad.l + (i / (n - 1 || 1)) * gw;
     const y = pad.t + gh - (Math.min(Math.max(d.v, 0), 100) / 100) * gh;
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   });
-  const lastX = pad.l + ((n-1) / (n - 1 || 1)) * gw;
-  ctx.lineTo(lastX, pad.t + gh);
-  ctx.lineTo(pad.l, pad.t + gh);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
+  const lx = pad.l + ((n-1) / (n - 1 || 1)) * gw;
+  ctx.lineTo(lx, pad.t + gh); ctx.lineTo(pad.l, pad.t + gh); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
 
+  // Smooth line
+  const lineW = 2 * dpr;
   ctx.beginPath();
   pts.forEach((d, i) => {
     const x = pad.l + (i / (n - 1 || 1)) * gw;
     const y = pad.t + gh - (Math.min(Math.max(d.v, 0), 100) / 100) * gh;
     if (i === 0) ctx.moveTo(x, y);
     else {
-      const prev = pts[i-1];
-      const pv = pad.t + gh - (Math.min(Math.max(prev.v, 0), 100) / 100) * gh;
+      const pv = pad.t + gh - (Math.min(Math.max(pts[i-1].v, 0), 100) / 100) * gh;
       const px = pad.l + ((i-1) / (n - 1 || 1)) * gw;
-      const cpx = (px + x) / 2;
-      ctx.bezierCurveTo(cpx, pv, cpx, y, x, y);
+      ctx.bezierCurveTo((px+x)/2, pv, (px+x)/2, y, x, y);
     }
   });
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = lineW;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
 
-  const last = pts[pts.length-1];
-  const lx = pad.l + ((n-1) / (n - 1 || 1)) * gw;
-  const ly = pad.t + gh - (Math.min(Math.max(last.v, 0), 100) / 100) * gh;
-  ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
-  ctx.stroke();
+  // End dot + value
+  const last = pts[n-1];
+  const ex = pad.l + ((n-1) / (n - 1 || 1)) * gw;
+  const ey = pad.t + gh - (Math.min(Math.max(last.v, 0), 100) / 100) * gh;
+  ctx.beginPath(); ctx.arc(ex, ey, 4 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = color; ctx.fill();
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5 * dpr; ctx.stroke();
 
-  ctx.fillStyle = color; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
-  ctx.fillText(Math.round(last.v) + '%', lx + 8, ly + 4);
+  ctx.fillStyle = color; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(Math.round(last.v) + '%', ex + 10 * dpr, ey + 4 * dpr);
+
+  // Store for hover tooltip
+  canvas._statsData = data;
+  canvas._statsTotal = totalBytes || 0;
+  canvas._statsPad = pad;
+  canvas._statsGW = gw;
+  canvas._statsGH = gh;
+  canvas._statsN = n;
+  canvas._statsColor = color;
 }
 
 async function loadStats() {
   try {
     const st = await api('/system/stats');
+    lastStats = st;
     const now = Date.now();
     statsCpu.push({ t: now, v: st.cpu.percent });
     statsMem.push({ t: now, v: st.memory.percent });
@@ -245,14 +260,76 @@ async function loadStats() {
     if (statsMem.length > 120) statsMem.shift();
     if (statsDisk.length > 120) statsDisk.shift();
     drawGraph($('#stats-cpu'), 'CPU', '#ff6b9d', statsCpu);
-    drawGraph($('#stats-mem'), 'RAM', '#3fb950', statsMem);
-    drawGraph($('#stats-disk'), 'Disk', '#58a6ff', statsDisk);
+    drawGraph($('#stats-mem'), 'RAM', '#3fb950', statsMem, st.memory.total_bytes);
+    drawGraph($('#stats-disk'), 'Disk', '#58a6ff', statsDisk, st.disk.total_bytes);
   } catch(_) {}
 }
 
 function startStatsPolling() {
   if (statsInterval) clearInterval(statsInterval);
   statsInterval = setInterval(loadStats, 2000);
+}
+
+/* ── Graph Hover Tooltip ── */
+document.addEventListener('mouseover', e => {
+  const c = e.target.closest('.stats-canvas');
+  if (!c) { const t = $('.graph-tooltip'); if (t) t.remove(); return; }
+});
+document.addEventListener('mousemove', e => {
+  const c = e.target.closest('.stats-canvas');
+  if (!c) return;
+  const d = c._statsData; if (!d || d.length < 2) return;
+  const rect = c.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * 2;
+  const pad = c._statsPad; const gw = c._statsGW; const n = c._statsN;
+  const idx = Math.round(((mx - pad.l) / gw) * (n - 1));
+  const clamped = Math.max(0, Math.min(n - 1, idx));
+  const pt = d[clamped];
+  let tip = $('.graph-tooltip');
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.className = 'graph-tooltip';
+    document.body.appendChild(tip);
+  }
+  const age = Math.round((Date.now() - pt.t) / 1000);
+  let text = pt.v.toFixed(1) + '%';
+  if (c._statsTotal) {
+    const used = Math.round(c._statsTotal * pt.v / 100);
+    text = fmtBytes(used) + ' / ' + fmtBytes(c._statsTotal) + ' (' + pt.v.toFixed(1) + '%)';
+  }
+  tip.innerHTML = text + '<br><span style="font-size:10px;opacity:0.6">' + age + 's ago</span>';
+  tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX + 12, window.innerWidth - tip.offsetWidth - 10) + 'px';
+  tip.style.top = (e.clientY - 40) + 'px';
+});
+
+/* ── Online Players on Dashboard ── */
+let onlinePoll = null;
+
+async function pollOnline() {
+  if (onlinePoll) clearInterval(onlinePoll);
+  await updateOnline();
+  onlinePoll = setInterval(updateOnline, 5000);
+}
+
+async function updateOnline() {
+  try {
+    const players = await api('/servers/'+selectedId+'/players');
+    const online = players ? players.filter(p => p.online) : [];
+    const el = $('#online-list'); const cnt = $('#online-count');
+    if (cnt) cnt.textContent = online.length;
+    if (!el) return;
+    if (!online.length) {
+      el.innerHTML = '<span class="online-empty">No players online</span>';
+      return;
+    }
+    el.innerHTML = online.map(p =>
+      '<span class="online-player" data-player="'+escAttr(p.name)+'"><span class="online-dot"></span>'+esc(p.name)+'</span>'
+    ).join('');
+    el.querySelectorAll('.online-player').forEach(el2 => {
+      el2.addEventListener('click', () => { showTab('players'); });
+    });
+  } catch(_) {}
 }
 
 /* ── Console ── */
@@ -473,11 +550,9 @@ function updateGutter() {
   const gutter = $('#editor-gutter');
   if (!ta || !gutter) return;
   const lines = ta.value.split('\n').length;
-  let html = '';
-  for (let i = 1; i <= lines; i++) {
-    html += '<div class="gutter-line' + (i === lines && ta.value.endsWith('\n') ? ' gutter-last' : '') + '">' + i + '</div>';
-  }
-  gutter.innerHTML = html;
+  gutter.innerHTML = Array.from({length: lines}, (_, i) =>
+    '<div class="gutter-line">' + (i + 1) + '</div>'
+  ).join('');
   gutter.scrollTop = ta.scrollTop;
 }
 
@@ -564,74 +639,73 @@ async function renderWorld(s) {
   const el = $('#tab-content');
   el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading world data...</div>';
   try {
-    const [worlds, backups] = await Promise.all([
-      api('/servers/'+selectedId+'/world'),
-      api('/servers/'+selectedId+'/world/backups'),
-    ]);
-
+    const worlds = await api('/servers/'+selectedId+'/world');
     const running = s.status === 'running';
-    const warnMsg = running ? '<div class="world-notice">Server is running. Stop it to upload or restore worlds.</div>' : '';
+    const warnMsg = running ? '<div class="world-notice">Server is running. Stop it to upload, delete, or replace worlds.</div>' : '';
 
     let html = warnMsg;
+    html += '<div class="section-title">Worlds</div>';
 
-    // World list section
-    html += '<div class="world-section"><h3 class="world-section-title">Worlds</h3>';
     if (!worlds || !worlds.length) {
-      html += '<div class="world-empty">No worlds found. Start the server to generate one.</div>';
+      html += '<div class="empty-state">No worlds found. Start the server to generate one.</div>';
     } else {
       for (const w of worlds) {
-        html += `<div class="world-card">
+        html += `<div class="world-card" data-world="${escAttr(w.name)}">
           <div class="world-info">
             <div class="world-name"><span class="icon-folder-sm"></span>${esc(w.name)}</div>
             <div class="world-meta">${fmtBytes(w.size)} &middot; ${fmtDate(w.mod_time)}</div>
           </div>
           <div class="world-actions">
             <button class="btn btn-sm" onclick="downloadWorld('${escAttr(w.name)}')">Download</button>
+            <button class="btn btn-sm" onclick="replaceWorld('${escAttr(w.name)}')" ${running?'disabled style="opacity:0.4"':''}>Replace</button>
+            <button class="btn btn-sm btn-red" onclick="deleteWorld('${escAttr(w.name)}')" ${running?'disabled style="opacity:0.4"':''}>Delete</button>
           </div>
         </div>`;
       }
     }
-    html += '</div>';
 
-    // Upload world
-    html += '<div class="world-section"><h3 class="world-section-title">Upload World</h3>';
-    html += `
+    // World context menu (right-click)
+    html += `<div class="section-title" style="margin-top:20px">Upload World</div>
       <div class="world-upload" id="world-upload-zone">
         <p>Upload a <code>.zip</code> world file</p>
-        <span class="hint">Server must be stopped</span>
+        <span class="hint">${running ? 'Server must be stopped' : 'Extracts into the server directory'}</span>
       </div>
       <div id="world-upload-progress" class="upload-progress" style="display:none">
         <div class="upload-info"><span id="wu-filename"></span><span id="wu-percent">0%</span></div>
         <div class="progress-track"><div id="wu-fill" class="progress-fill" style="width:0%"></div></div>
       </div>`;
-    if (!running) {
-      html += '<div style="margin-top:8px"><button class="btn btn-sm" onclick="uploadWorld()">Upload .zip</button></div>';
-    }
-    html += '</div>';
-
-    // Backups section
-    html += '<div class="world-section"><h3 class="world-section-title">Backups</h3>';
-    html += '<div style="margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="createBackup()">Create Backup</button></div>';
-    if (!backups || !backups.length) {
-      html += '<div class="world-empty">No backups yet.</div>';
-    } else {
-      html += backups.map(b => `<div class="backup-item">
-        <div class="backup-info">
-          <div class="backup-name">${esc(b.name)}</div>
-          <div class="backup-meta">${fmtBytes(b.size)} &middot; ${fmtDate(b.created)}</div>
-        </div>
-        <div class="backup-actions">
-          <button class="btn btn-sm" onclick="downloadBackup('${escAttr(b.name)}')">Download</button>
-          <button class="btn btn-sm ${running ? '' : ''}" onclick="restoreBackup('${escAttr(b.name)}')" ${running ? 'disabled style="opacity:0.4"' : ''}>Restore</button>
-          <button class="btn btn-sm btn-red" onclick="deleteBackup('${escAttr(b.name)}')">Delete</button>
-        </div>
-      </div>`).join('');
-    }
-    html += '</div>';
 
     el.innerHTML = html;
 
-    // Setup world upload drop zone
+    // Right-click context on world cards
+    el.querySelectorAll('.world-card').forEach(card => {
+      card.addEventListener('contextmenu', e => {
+        e.preventDefault(); e.stopPropagation();
+        const name = card.dataset.world;
+        const m = $('#ctx-menu'); m.style.display = 'block';
+        m.style.left = Math.min(e.clientX, window.innerWidth-160)+'px';
+        m.style.top = Math.min(e.clientY, window.innerHeight-120)+'px';
+        $$('.ctx-item', m).forEach(el2 => {
+          el2.style.display = 'block';
+          if (el2.dataset.action === 'download') el2.onclick = () => { hideCtx(); downloadWorld(name); };
+          else if (el2.dataset.action === 'rename') el2.style.display = 'none';
+          else if (el2.dataset.action === 'delete') el2.onclick = () => { hideCtx(); deleteWorld(name); };
+        });
+        // Add "Open in Files" action
+        let openItem = m.querySelector('.ctx-item[data-action="open-files"]');
+        if (!openItem) {
+          openItem = document.createElement('button');
+          openItem.className = 'ctx-item';
+          openItem.dataset.action = 'open-files';
+          openItem.textContent = 'Open in Files';
+          m.insertBefore(openItem, m.firstChild);
+        }
+        openItem.style.display = 'block';
+        openItem.onclick = () => { hideCtx(); filePath = name; showTab('files'); };
+      });
+    });
+
+    // Upload zone
     if (!running) {
       const wz = $('#world-upload-zone');
       if (wz) {
@@ -642,7 +716,7 @@ async function renderWorld(s) {
       }
     }
   } catch(e) {
-    el.innerHTML = '<div class="world-empty">Error: '+esc(e.message)+'</div>';
+    el.innerHTML = '<div class="empty-state">Error: '+esc(e.message)+'</div>';
   }
 }
 
@@ -650,10 +724,32 @@ window.downloadWorld = function(name) {
   window.open('/api/servers/'+selectedId+'/world/download?world='+encodeURIComponent(name), '_blank');
 };
 
+window.replaceWorld = async function(name) {
+  const i = document.createElement('input');
+  i.type = 'file'; i.accept = '.zip';
+  i.onchange = async () => {
+    if (!i.files[0]) return;
+    const ok = await showModal('Replace World', 'Replace "'+name+'" with the uploaded zip? The current world will be deleted.', {ok:'Replace',cancel:'Cancel'});
+    if (!ok) return;
+    try {
+      await api('/servers/'+selectedId+'/world?name='+encodeURIComponent(name), {method:'DELETE'});
+    } catch(_) {}
+    doWorldUpload(i.files[0]);
+  };
+  i.click();
+};
+
+window.deleteWorld = async function(name) {
+  if (!await showModal('Delete World', 'Delete "'+name+'"? This cannot be undone.', {ok:'Delete',cancel:'Cancel'})) return;
+  try {
+    await api('/servers/'+selectedId+'/world?name='+encodeURIComponent(name), {method:'DELETE'});
+    renderWorld(servers.find(s => s.id === selectedId));
+  } catch(e) { showModal('Error', esc(e.message)); }
+};
+
 window.uploadWorld = function() {
   const i = document.createElement('input');
-  i.type = 'file';
-  i.accept = '.zip';
+  i.type = 'file'; i.accept = '.zip';
   i.onchange = () => { if (i.files[0]) doWorldUpload(i.files[0]); };
   i.click();
 };
@@ -662,9 +758,7 @@ async function doWorldUpload(file) {
   const pb = $('#world-upload-progress'); if (!pb) return;
   pb.style.display = 'block';
   $('#wu-filename').textContent = file.name;
-
-  const fd = new FormData();
-  fd.append('file', file);
+  const fd = new FormData(); fd.append('file', file);
   const x = new XMLHttpRequest();
   x.upload.onprogress = e => {
     if (e.lengthComputable) {
@@ -674,90 +768,198 @@ async function doWorldUpload(file) {
   };
   x.onload = () => {
     pb.style.display = 'none';
-    if (x.status >= 200 && x.status < 300) {
-      showModal('Success', 'World uploaded successfully.');
-      renderWorld(servers.find(s => s.id === selectedId));
-    } else {
-      showModal('Error', x.responseText || 'Upload failed');
-    }
+    if (x.status >= 200 && x.status < 300) { showModal('Success', 'World uploaded.'); renderWorld(servers.find(s => s.id === selectedId)); }
+    else showModal('Error', x.responseText || 'Upload failed');
   };
   x.onerror = () => { pb.style.display = 'none'; showModal('Error', 'Network error'); };
-  x.open('POST', API+'/servers/'+selectedId+'/world/upload');
-  x.send(fd);
+  x.open('POST', API+'/servers/'+selectedId+'/world/upload'); x.send(fd);
+}
+
+/* ── Backups Tab ── */
+async function renderBackups(s) {
+  const el = $('#tab-content');
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading backups...</div>';
+  try {
+    const [backups, folders] = await Promise.all([
+      api('/servers/'+selectedId+'/backups'),
+      api('/servers/'+selectedId+'/world/folders'),
+    ]);
+    const running = s.status === 'running';
+
+    let html = '';
+
+    // Create backup section
+    html += '<div class="section-title">Create Backup</div>';
+    html += '<div class="backup-form">';
+    html += '<p style="font-size:13px;color:var(--text-dim);margin-bottom:10px">Select folders to include:</p>';
+    html += '<div class="folder-list" id="backup-folders">';
+    const autoChecked = ['world', 'world_nether', 'world_the_end'];
+    if (folders && folders.length) {
+      for (const f of folders) {
+        const checked = autoChecked.includes(f.name) ? 'checked' : '';
+        html += `<label class="folder-item">
+          <input type="checkbox" class="folder-cb" value="${escAttr(f.name)}" ${checked}>
+          <span class="folder-icon ${f.is_mod ? 'mod' : 'world'}"></span>
+          <span class="folder-name">${esc(f.name)}</span>
+          <span class="folder-size">${fmtBytes(f.size)}</span>
+        </label>`;
+      }
+    }
+    html += '</div>';
+    html += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center">';
+    html += '<button class="btn btn-sm" onclick="document.querySelectorAll(\'.folder-cb\').forEach(c=>c.checked=true)">Select All</button>';
+    html += '<button class="btn btn-sm" onclick="document.querySelectorAll(\'.folder-cb\').forEach(c=>c.checked=false)">Deselect All</button>';
+    html += '<button class="btn btn-primary" onclick="createBackup()">Create Backup</button>';
+    html += '<span id="backup-total-size" style="font-size:12px;color:var(--text-dim);margin-left:8px"></span>';
+    html += '</div></div>';
+
+    // Update total size when checkboxes change
+    html += '<script>document.addEventListener("change", function(e){if(e.target.classList.contains("folder-cb"))updateBackupSize()});</script>';
+
+    // Backups list
+    html += '<div class="section-title" style="margin-top:24px">Saved Backups</div>';
+    if (!backups || !backups.length) {
+      html += '<div class="empty-state">No backups yet.</div>';
+    } else {
+      for (const b of backups) {
+        html += `<div class="backup-item">
+          <div class="backup-info">
+            <div class="backup-name">${esc(b.name)}</div>
+            <div class="backup-meta">${fmtBytes(b.size)} &middot; ${fmtDate(b.created)}</div>
+          </div>
+          <div class="backup-actions">
+            <button class="btn btn-sm" onclick="downloadBackup('${escAttr(b.name)}')">Download</button>
+            <button class="btn btn-sm ${running ? '' : ''}" onclick="restoreBackup('${escAttr(b.name)}')" ${running?'disabled style="opacity:0.4"':''}>Restore</button>
+            <button class="btn btn-sm btn-red" onclick="deleteBackup('${escAttr(b.name)}')">Delete</button>
+          </div>
+        </div>`;
+      }
+    }
+
+    el.innerHTML = html;
+    updateBackupSize();
+
+    // Setup folder checkbox change handler
+    el.querySelectorAll('.folder-cb').forEach(cb => cb.addEventListener('change', updateBackupSize));
+  } catch(e) {
+    el.innerHTML = '<div class="empty-state">Error: '+esc(e.message)+'</div>';
+  }
+}
+
+function updateBackupSize() {
+  const el = $('#backup-total-size');
+  if (!el) return;
+  // Get sizes from the displayed folders
+  let total = 0;
+  $$('.folder-cb:checked').forEach(cb => {
+    const sizeText = cb.closest('.folder-item')?.querySelector('.folder-size')?.textContent;
+    if (sizeText) {
+      const match = sizeText.match(/^[\d.]+/);
+      const unit = sizeText.match(/[A-Z]+/);
+      if (match && unit) {
+        const v = parseFloat(match[0]);
+        const u = unit[0];
+        if (u === 'B') total += v;
+        else if (u === 'KB') total += v * 1024;
+        else if (u === 'MB') total += v * 1048576;
+        else if (u === 'GB') total += v * 1073741824;
+        else if (u === 'TB') total += v * 1099511627776;
+      }
+    }
+  });
+  el.textContent = '~' + fmtBytes(total);
 }
 
 window.createBackup = async function() {
+  const cbs = $$('.folder-cb:checked');
+  if (!cbs.length) { showModal('Error', 'Select at least one folder to back up.'); return; }
+  const folders = [...cbs].map(cb => cb.value);
   try {
-    const b = await api('/servers/'+selectedId+'/world/backup', { method: 'POST' });
+    const b = await api('/servers/'+selectedId+'/backups', { method:'POST', body:JSON.stringify({folders}) });
     showModal('Backup Created', 'Backup "'+b.name+'" created.');
-    renderWorld(servers.find(s => s.id === selectedId));
+    renderBackups(servers.find(s => s.id === selectedId));
   } catch(e) { showModal('Error', esc(e.message)); }
 };
 
 window.restoreBackup = async function(name) {
-  if (!await showModal('Restore Backup', 'Restore "'+name+'"? This will overwrite current world files.', {ok:'Restore',cancel:'Cancel'})) return;
-  if (servers.find(s => s.id === selectedId)?.status === 'running') {
-    showModal('Error', 'Server must be stopped to restore.');
-    return;
-  }
+  if (!await showModal('Restore Backup', 'Restore "'+name+'"? This will overwrite current files.', {ok:'Restore',cancel:'Cancel'})) return;
+  const s = servers.find(x => x.id === selectedId);
+  if (s && s.status === 'running') { showModal('Error', 'Server must be stopped to restore.'); return; }
   try {
-    await api('/servers/'+selectedId+'/world/restore?name='+encodeURIComponent(name), { method: 'POST' });
+    await api('/servers/'+selectedId+'/backups/restore?name='+encodeURIComponent(name), { method: 'POST' });
     showModal('Restored', 'Backup "'+name+'" restored.');
-    renderWorld(servers.find(s => s.id === selectedId));
   } catch(e) { showModal('Error', esc(e.message)); }
 };
 
 window.deleteBackup = async function(name) {
   if (!await showModal('Delete Backup', 'Delete "'+name+'"?', {ok:'Delete',cancel:'Cancel'})) return;
   try {
-    await api('/servers/'+selectedId+'/world/backup?name='+encodeURIComponent(name), { method: 'DELETE' });
-    showModal('Deleted', 'Backup deleted.');
-    renderWorld(servers.find(s => s.id === selectedId));
+    await api('/servers/'+selectedId+'/backups?name='+encodeURIComponent(name), { method: 'DELETE' });
+    renderBackups(servers.find(s => s.id === selectedId));
   } catch(e) { showModal('Error', esc(e.message)); }
 };
 
 window.downloadBackup = function(name) {
-  window.open('/api/servers/'+selectedId+'/download?path='+encodeURIComponent('backups/'+name), '_blank');
+  window.open('/api/servers/'+selectedId+'/backups/download?name='+encodeURIComponent(name), '_blank');
 };
 
 /* ── Players Tab ── */
+let expandedPlayer = null;
+
 async function renderPlayers(s) {
   const el = $('#tab-content');
+  expandedPlayer = null;
   el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading players...</div>';
   try {
     const players = await api('/servers/'+selectedId+'/players');
     if (!players || !players.length) {
-      el.innerHTML = '<div class="players-empty">No players found.<br>'+(s.status==='running'?'Players will appear here when they join the server.':'Start the server to see online players.')+'</div>';
+      el.innerHTML = '<div class="empty-state">No players found.<br>'+(s.status==='running'?'Players will appear here when they join.':'Start the server to see online players.')+'</div>';
       return;
     }
     el.innerHTML = '<div style="margin-bottom:12px;font-size:13px;color:var(--text-dim)">'+players.length+' known player(s)</div>' +
+      '<div class="players-list">' +
       players.map(p => {
         const avatar = esc(p.name.charAt(0).toUpperCase());
         const badgeCls = p.online ? 'online' : 'offline';
         const badgeTxt = p.online ? 'Online' : 'Offline';
         const stats = p.stats;
-        return `<div class="player-item">
-          <div class="player-avatar">${avatar}</div>
-          <div class="player-info">
-            <div class="player-name-row">
-              <div class="player-name">${esc(p.name)}</div>
-              <span class="player-badge ${badgeCls}">${badgeTxt}</span>
+        const isExpanded = expandedPlayer === p.name;
+        return `<div class="player-card${isExpanded?' expanded':''}" data-player="${escAttr(p.name)}">
+          <div class="player-main" onclick="togglePlayer('${escAttr(p.name)}')">
+            <div class="player-avatar">${avatar}</div>
+            <div class="player-info">
+              <div class="player-name-row">
+                <div class="player-name">${esc(p.name)}</div>
+                <span class="player-badge ${badgeCls}">${badgeTxt}</span>
+              </div>
+              ${p.uuid ? '<div class="player-uuid">'+esc(p.uuid)+'</div>' : ''}
+              <div class="player-stats-summary">
+                ${stats ? '<span>Played '+fmtTime(stats.play_time)+'</span><span>Walked '+(stats.walk_dist/1000).toFixed(1)+'km</span>' : '<span class="no-stats">No stats yet</span>'}
+              </div>
             </div>
-            ${p.uuid ? '<div class="player-uuid">'+esc(p.uuid)+'</div>' : ''}
-            ${stats ? '<div class="player-stats">' +
-              '<span title="Play Time"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>'+fmtTime(stats.play_time)+'</span>' +
-              '<span title="Distance Walked"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>'+(stats.walk_dist/1000).toFixed(1)+'km</span>' +
-              '<span title="Mob Kills"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'+stats.kills+'</span>' +
-              '<span title="Damage Dealt"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>'+stats.damage+'</span>' +
-              '<span title="Deaths" class="stat-death"><svg class="stat-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'+stats.deaths+'</span>' +
-            '</div>' : '<div class="player-stats"><span class="no-stats">No stats yet</span></div>'}
+            <span class="player-expand-icon">${isExpanded ? '▾' : '▸'}</span>
           </div>
+          ${isExpanded && stats ? '<div class="player-detail">' +
+            '<div class="detail-grid">' +
+            '<div class="detail-item"><span class="detail-label">Play Time</span><span class="detail-value">'+fmtTime(stats.play_time)+'</span></div>' +
+            '<div class="detail-item"><span class="detail-label">Distance Walked</span><span class="detail-value">'+(stats.walk_dist/1000).toFixed(2)+' km</span></div>' +
+            '<div class="detail-item"><span class="detail-label">Mob Kills</span><span class="detail-value">'+stats.kills+'</span></div>' +
+            '<div class="detail-item"><span class="detail-label">Damage Dealt</span><span class="detail-value">'+stats.damage+'</span></div>' +
+            '<div class="detail-item"><span class="detail-label">Deaths</span><span class="detail-value stat-death">'+stats.deaths+'</span></div>' +
+            (stats.play_time ? '<div class="detail-item"><span class="detail-label">K/D Ratio</span><span class="detail-value">'+(stats.deaths ? (stats.kills/stats.deaths).toFixed(2) : stats.kills)+'</span></div>' : '') +
+            '</div></div>' : ''}
+          ${isExpanded && !stats ? '<div class="player-detail"><div class="empty-state" style="padding:16px">No statistics available yet. They will appear after playing on the server.</div></div>' : ''}
         </div>`;
-      }).join('');
+      }).join('') + '</div>';
   } catch(e) {
-    el.innerHTML = '<div class="players-empty">Error loading players: '+esc(e.message)+'</div>';
+    el.innerHTML = '<div class="empty-state">Error: '+esc(e.message)+'</div>';
   }
 }
+
+window.togglePlayer = function(name) {
+  expandedPlayer = expandedPlayer === name ? null : name;
+  renderPlayers(servers.find(s => s.id === selectedId));
+};
 
 /* ── New Server Modal ── */
 $('#new-server-btn').addEventListener('click', () => openModal());
@@ -810,6 +1012,7 @@ document.addEventListener('keydown', e => {
 
 const origShowTab = showTab;
 showTab = function(name) {
+  if (onlinePoll) { clearInterval(onlinePoll); onlinePoll = null; }
   if (name !== 'dashboard' && statsInterval) { clearInterval(statsInterval); statsInterval = null; }
   origShowTab(name);
 };

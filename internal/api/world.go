@@ -148,10 +148,29 @@ func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find all world dirs
-	worldDirs := findWorldDirs(inst.Config.Path)
-	if len(worldDirs) == 0 {
-		http.Error(w, "no world directories found", http.StatusBadRequest)
+	var req struct {
+		Folders []string `json:"folders"`
+	}
+	folders := findWorldDirs(inst.Config.Path)
+
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && len(req.Folders) > 0 {
+			// Validate that requested folders exist
+			var valid []string
+			for _, f := range req.Folders {
+				fi, err := os.Stat(filepath.Join(inst.Config.Path, f))
+				if err == nil && fi.IsDir() {
+					valid = append(valid, f)
+				}
+			}
+			if len(valid) > 0 {
+				folders = valid
+			}
+		}
+	}
+
+	if len(folders) == 0 {
+		http.Error(w, "no directories to back up", http.StatusBadRequest)
 		return
 	}
 
@@ -159,10 +178,14 @@ func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 	os.MkdirAll(bDir, 0755)
 
 	ts := time.Now().Format("2006-01-02_150405")
-	zipName := fmt.Sprintf("world-%s.zip", ts)
+	suffix := "backup"
+	if len(folders) == 1 {
+		suffix = folders[0]
+	}
+	zipName := fmt.Sprintf("%s-%s.zip", suffix, ts)
 	zipPath := filepath.Join(bDir, zipName)
 
-	if err := zipWorlds(zipPath, worldDirs); err != nil {
+	if err := zipWorlds(zipPath, folders, inst.Config.Path); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -179,6 +202,31 @@ func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 		Size:    size,
 		Created: time.Now().Format(time.RFC3339),
 	})
+}
+
+func (h *Handler) BackupDownload(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	inst := h.manager.Get(id)
+	if inst == nil {
+		http.Error(w, "server not found", http.StatusNotFound)
+		return
+	}
+
+	backupName := r.URL.Query().Get("name")
+	if backupName == "" {
+		http.Error(w, "backup name required", http.StatusBadRequest)
+		return
+	}
+
+	backupPath := filepath.Join(backupDir(inst.Config.Path), filepath.Base(backupName))
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		http.Error(w, "backup not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(backupName)))
+	w.Header().Set("Content-Type", "application/zip")
+	http.ServeFile(w, r, backupPath)
 }
 
 func (h *Handler) BackupRestore(w http.ResponseWriter, r *http.Request) {
@@ -437,7 +485,7 @@ func findWorldDirs(serverPath string) []string {
 	return dirs
 }
 
-func zipWorlds(zipPath string, worldDirs []string) error {
+func zipWorlds(zipPath string, dirs []string, serverPath string) error {
 	zw, err := os.Create(zipPath)
 	if err != nil {
 		return err
@@ -447,14 +495,13 @@ func zipWorlds(zipPath string, worldDirs []string) error {
 	w := zip.NewWriter(zw)
 	defer w.Close()
 
-	baseDir := filepath.Dir(zipPath)
-	for _, dir := range worldDirs {
-		absDir := filepath.Join(filepath.Dir(baseDir), dir)
+	for _, dir := range dirs {
+		absDir := filepath.Join(serverPath, dir)
 		filepath.Walk(absDir, func(path string, fi os.FileInfo, err error) error {
 			if err != nil {
 				return nil
 			}
-			rel, _ := filepath.Rel(filepath.Dir(baseDir), path)
+			rel, _ := filepath.Rel(serverPath, path)
 			if fi.IsDir() {
 				w.Create(rel + "/")
 				return nil
@@ -473,4 +520,81 @@ func zipWorlds(zipPath string, worldDirs []string) error {
 		})
 	}
 	return nil
+}
+
+func (h *Handler) WorldFolders(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	inst := h.manager.Get(id)
+	if inst == nil {
+		http.Error(w, "server not found", http.StatusNotFound)
+		return
+	}
+
+	var folders []struct {
+		Name  string `json:"name"`
+		Size  int64  `json:"size"`
+		IsMod bool   `json:"is_mod"`
+	}
+
+	entries, err := os.ReadDir(inst.Config.Path)
+	if err != nil {
+		json.NewEncoder(w).Encode(folders)
+		return
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || e.Name() == "backups" {
+			continue
+		}
+		info, _ := e.Info()
+		var size int64
+		if info != nil {
+			size = info.Size()
+		}
+		isMod := e.Name() == "plugins" || e.Name() == "mods" || e.Name() == "datapacks"
+		folders = append(folders, struct {
+			Name  string `json:"name"`
+			Size  int64  `json:"size"`
+			IsMod bool   `json:"is_mod"`
+		}{
+			Name:  e.Name(),
+			Size:  dirSize(filepath.Join(inst.Config.Path, e.Name())),
+			IsMod: isMod,
+		})
+	}
+
+	json.NewEncoder(w).Encode(folders)
+}
+
+func (h *Handler) WorldDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	inst := h.manager.Get(id)
+	if inst == nil {
+		http.Error(w, "server not found", http.StatusNotFound)
+		return
+	}
+
+	worldName := r.URL.Query().Get("name")
+	if worldName == "" {
+		http.Error(w, "world name required", http.StatusBadRequest)
+		return
+	}
+
+	if inst.Status == "running" || inst.Status == "starting" {
+		http.Error(w, "server must be stopped to delete a world", http.StatusBadRequest)
+		return
+	}
+
+	worldPath := filepath.Join(inst.Config.Path, worldName)
+	if _, err := os.Stat(worldPath); os.IsNotExist(err) {
+		http.Error(w, "world not found", http.StatusNotFound)
+		return
+	}
+
+	if err := os.RemoveAll(worldPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

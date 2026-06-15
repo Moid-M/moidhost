@@ -42,12 +42,17 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 
 	// World management
 	mux.HandleFunc("GET /api/servers/{id}/world", h.WorldInfo)
+	mux.HandleFunc("DELETE /api/servers/{id}/world", h.WorldDelete)
 	mux.HandleFunc("GET /api/servers/{id}/world/download", h.WorldDownload)
 	mux.HandleFunc("POST /api/servers/{id}/world/upload", h.WorldUpload)
-	mux.HandleFunc("GET /api/servers/{id}/world/backups", h.BackupList)
-	mux.HandleFunc("POST /api/servers/{id}/world/backup", h.BackupCreate)
-	mux.HandleFunc("POST /api/servers/{id}/world/restore", h.BackupRestore)
-	mux.HandleFunc("DELETE /api/servers/{id}/world/backup", h.BackupDelete)
+	mux.HandleFunc("GET /api/servers/{id}/world/folders", h.WorldFolders)
+
+	// Backup management
+	mux.HandleFunc("GET /api/servers/{id}/backups", h.BackupList)
+	mux.HandleFunc("POST /api/servers/{id}/backups", h.BackupCreate)
+	mux.HandleFunc("DELETE /api/servers/{id}/backups", h.BackupDelete)
+	mux.HandleFunc("POST /api/servers/{id}/backups/restore", h.BackupRestore)
+	mux.HandleFunc("GET /api/servers/{id}/backups/download", h.BackupDownload)
 
 	mux.HandleFunc("GET /api/system/stats", h.SystemStats)
 
