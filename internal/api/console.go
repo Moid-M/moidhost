@@ -7,6 +7,13 @@ import (
 	"github.com/coder/websocket"
 )
 
+func (h *Handler) hasPerm(r *http.Request, id, perm string) bool {
+	if GetRoleFromCtx(r) == "admin" {
+		return true
+	}
+	return h.auth.CheckPermission(r, id, perm)
+}
+
 type consoleMsg struct {
 	Type string `json:"type"`
 	Data string `json:"data"`
@@ -48,6 +55,7 @@ func (h *Handler) ConsoleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer h.manager.Unsubscribe(id, ch)
 
+	canSend := h.hasPerm(r, id, "console_send")
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -57,7 +65,7 @@ func (h *Handler) ConsoleWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var cmd consoleMsg
-			if json.Unmarshal(msg, &cmd) == nil && cmd.Type == "cmd" {
+			if json.Unmarshal(msg, &cmd) == nil && cmd.Type == "cmd" && canSend {
 				h.manager.SendCommand(id, cmd.Data)
 			}
 		}

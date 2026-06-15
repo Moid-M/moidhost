@@ -115,21 +115,28 @@ function hasPerm(perm) {
   return perms.includes(perm);
 }
 
+function hasAnyPerm(perms) {
+  return perms.some(p => hasPerm(p));
+}
+
 function filterTabs() {
   if (!authUser) return;
-  const permMap = {
-    dashboard: 'dashboard', console: 'console', files: 'files',
-    world: 'world', backups: 'backups', players: 'players', settings: 'settings',
-  };
-  const allowed = ['users'];
   if (authUser.role === 'admin') {
     $$('.tab').forEach(t => t.style.display = '');
     return;
   }
-  for (const [tab, perm] of Object.entries(permMap)) {
+  const tabPerms = {
+    dashboard: ['dashboard'],
+    console: ['console'],
+    files: ['files_read', 'files_write'],
+    world: ['world'],
+    backups: ['backups_create', 'backups_delete', 'backups_restore'],
+    players: ['players'],
+    settings: ['settings'],
+  };
+  for (const [tab, perms] of Object.entries(tabPerms)) {
     const el = $(`.tab[data-tab="${tab}"]`);
-    if (el) el.style.display = hasPerm(perm) ? '' : 'none';
-    $$('.tab[data-tab="users"]').forEach(t => t.style.display = 'none');
+    if (el) el.style.display = hasAnyPerm(perms) ? '' : 'none';
   }
 }
 
@@ -212,13 +219,14 @@ function renderDashboard(s) {
   if (!hasPerm('dashboard')) { $('#tab-content').innerHTML = '<div class="empty-state">No access to this section.</div>'; return; }
   const el = $('#tab-content');
   const running = s.status === 'running';
+  let actions = '';
+  if (!running && hasPerm('start')) actions += `<button class="btn btn-green btn-sm" onclick="startServer()">Start</button>`;
+  if (running) {
+    if (hasPerm('stop')) actions += `<button class="btn btn-red btn-sm" onclick="action('stop')">Shutdown</button><button class="btn btn-sm" onclick="action('kill')">Kill</button>`;
+    if (hasPerm('restart')) actions += `<button class="btn btn-sm" onclick="action('restart')">Restart</button>`;
+  }
   el.innerHTML = `
-    <div class="dashboard-actions">
-      ${!running ? `<button class="btn btn-green btn-sm" onclick="startServer()">Start</button>` :
-      `<button class="btn btn-red btn-sm" onclick="action('stop')">Shutdown</button>
-       <button class="btn btn-sm" onclick="action('kill')">Kill</button>
-       <button class="btn btn-sm" onclick="action('restart')">Restart</button>`}
-    </div>
+    <div class="dashboard-actions">${actions}</div>
     <div class="dashboard-grid">
       <div class="dashboard-card"><div class="label">Status</div><div class="value">${esc(s.status)}</div></div>
       <div class="dashboard-card"><div class="label">Java Args</div><div class="value" style="font-size:13px;font-family:var(--font-mono)">${esc(s.java_args)}</div></div>
@@ -238,7 +246,7 @@ function renderDashboard(s) {
 }
 
 window.startServer = async function() {
-  if (!hasPerm('console')) return;
+  if (!hasPerm('start')) return;
   const s = servers.find(x => x.id === selectedId);
   if (!s) return;
   if (!s.eula_accepted) {
@@ -335,16 +343,17 @@ async function updateOnline() {
 /* ── Console ── */
 function renderConsole(s) { if(!hasPerm('console')){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
   const el = $('#tab-content');
-  el.innerHTML = `<div class="console-container"><div class="console-output" id="console-output">${s.status!=='running'?'<div class="line" style="color:var(--text-dim)">Server is not running.</div>':''}</div><div class="console-input-row"><input type="text" id="console-input" placeholder="${s.status==='running'?'Type a command...':'Start the server first'}" autocomplete="off" ${s.status!=='running'?'disabled':''}><button class="btn btn-primary btn-sm" id="console-send" ${s.status!=='running'?'disabled':''}>Send</button></div></div>`;
+  const canSend = s.status==='running' && hasPerm('console_send');
+  el.innerHTML = `<div class="console-container"><div class="console-output" id="console-output">${s.status!=='running'?'<div class="line" style="color:var(--text-dim)">Server is not running.</div>':''}</div><div class="console-input-row"><input type="text" id="console-input" placeholder="${canSend?'Type a command...':'Start the server first'}" autocomplete="off" ${!canSend?'disabled':''}><button class="btn btn-primary btn-sm" id="console-send" ${!canSend?'disabled':''}>Send</button></div></div>`;
   if(s.status!=='running')return;const out=$('#console-output');if(consoleLines.length)out.innerHTML=consoleLines.map(l=>'<div class="line">'+esc(l)+'</div>').join('');out.scrollTop=out.scrollHeight;
   $('#console-input').addEventListener('keydown',e=>{if(e.key==='Enter')sendCmd();});$('#console-send').addEventListener('click',sendCmd);openConsole();
 }
-function sendCmd() { const input = $('#console-input'); const cmd = input.value.trim(); if (!cmd) return; input.value = ''; if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:'cmd',data:cmd})); else api('/servers/'+selectedId+'/command', { method:'POST', body: JSON.stringify({command:cmd}) }); }
+function sendCmd() { if (!hasPerm('console_send')) return; const input = $('#console-input'); const cmd = input.value.trim(); if (!cmd) return; input.value = ''; if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:'cmd',data:cmd})); else api('/servers/'+selectedId+'/command', { method:'POST', body: JSON.stringify({command:cmd}) }); }
 function openConsole() { closeConsole(); const s = servers.find(x => x.id === selectedId); if (!s || s.status !== 'running') return; const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'; ws = new WebSocket(proto+'//'+location.host+'/api/servers/'+selectedId+'/console?token='+authToken); ws.onmessage = e => { const msg = JSON.parse(e.data); if (msg.type === 'log') { consoleLines.push(msg.data); if (consoleLines.length > 5000) consoleLines = consoleLines.slice(-5000); const out = $('#console-output'); if (out) { out.insertAdjacentHTML('beforeend','<div class="line">'+esc(msg.data)+'</div>'); out.scrollTop = out.scrollHeight; } } }; ws.onclose = () => { ws = null; }; }
 function closeConsole() { if (ws) { ws.close(); ws = null; } }
 
 /* ── Files ── */
-function renderFiles(s) {if(!hasPerm('files')){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
+function renderFiles(s) {if(!hasAnyPerm(['files_read','files_write'])){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
   filePath='';editingFile=null;$('#tab-content').innerHTML=`<div class="files-toolbar"><div id="file-breadcrumb" style="flex:1;font-size:13px;color:var(--text-dim)"></div></div><div class="drop-zone" id="drop-zone"><p>Drop files here or click to browse</p><span class="hint">Drag & drop files to upload</span><div id="upload-progress" class="upload-progress" style="display:none"><div class="upload-info"><span id="upload-filename"></span><span id="upload-percent">0%</span></div><div class="progress-track"><div id="progress-fill" class="progress-fill" style="width:0%"></div></div></div></div><div id="file-view"><div class="file-list" id="file-list"><div style="padding:20px;text-align:center;color:var(--text-dim)">Loading...</div></div></div>`;loadFiles();setupDropZone();
 }
 function breadcrumb() { const p=filePath.split('/').filter(Boolean); let h='<a href="#" class="bc-link" data-dir="" style="color:var(--accent)">root</a>'; let a=''; for(const x of p){a+='/'+x;h+=' / <a href="#" class="bc-link" data-dir="'+escAttr(a)+'" style="color:var(--accent)">'+esc(x)+'</a>';} return h; }
@@ -378,17 +387,18 @@ window.cancelEditor=function(){editingFile=null;renderFiles(servers.find(x=>x.id
 
 /* ── Context Menu ── */
 let ctxTarget=null,ctxDir=false;
-function showCtx(e,p,d){e.preventDefault();e.stopPropagation();ctxTarget=p;ctxDir=d;const m=$('#ctx-menu');$$('.ctx-item',m).forEach(el=>el.style.display=el.dataset.action==='download'&&d?'none':'block');const c=$('#ctx-cancel');if(c)c.style.display=isMobile()?'block':'none';if(isMobile()){m.style.left='0';m.style.top='auto';}else{m.style.left=Math.min(e.clientX,window.innerWidth-160)+'px';m.style.top=Math.min(e.clientY,window.innerHeight-120)+'px';}m.style.display='block';}
+function showCtx(e,p,d){e.preventDefault();e.stopPropagation();ctxTarget=p;ctxDir=d;const m=$('#ctx-menu');$$('.ctx-item',m).forEach(el=>{const a=el.dataset.action;if(a==='download')el.style.display=d||!hasPerm('files_read')?'none':'block';else if(a==='rename'||a==='delete')el.style.display=hasPerm('files_write')?'block':'none';});const c=$('#ctx-cancel');if(c)c.style.display=isMobile()?'block':'none';if(isMobile()){m.style.left='0';m.style.top='auto';}else{m.style.left=Math.min(e.clientX,window.innerWidth-160)+'px';m.style.top=Math.min(e.clientY,window.innerHeight-120)+'px';}m.style.display='block';}
 function hideCtx(){$('#ctx-menu').style.display='none';ctxTarget=null;}
 $('#ctx-menu').addEventListener('click',async e=>{const btn=e.target.closest('.ctx-item');if(!btn||btn.id==='ctx-cancel')return;const a=btn.dataset.action;const p=ctxTarget;hideCtx();if(!p)return;try{if(a==='download')window.open('/api/servers/'+selectedId+'/download?path='+encodeURIComponent(p)+'&token='+authToken,'_blank');else if(a==='rename'){const n=prompt('New name:',p.split('/').pop());if(!n||n===p.split('/').pop())return;await api('/servers/'+selectedId+'/files?path='+encodeURIComponent(p),{method:'PUT',body:JSON.stringify({name:n})});loadFiles();}else if(a==='delete'){if(await showModal('Delete','Delete "'+p+'"?',{ok:'Delete',cancel:'Cancel'})){await api('/servers/'+selectedId+'/files?path='+encodeURIComponent(p),{method:'DELETE'});loadFiles();}}}catch(e){showModal('Error',esc(e.message));}});
 document.addEventListener('click',hideCtx);window.addEventListener('resize',()=>{if(!isMobile())hideCtx();});
 
 /* ── Settings ── */
 function renderSettings(s){if(!hasPerm('settings')){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
-  $('#tab-content').innerHTML=`<div class="settings-form"><div class="form-group"><label>Server Name</label><input type="text" id="set-name" value="${esc(s.name)}"></div><div class="form-group"><label>Server Jar</label><input type="text" id="set-jar" value="${esc(s.jar_file)}"></div><div class="form-group"><label>Java Path</label><input type="text" id="set-java-path" value="${esc(s.java_path||'')}" placeholder="/usr/lib/jvm/java-21/bin/java"></div><div class="form-group"><label>Java Arguments</label><input type="text" id="set-java" value="${esc(s.java_args)}"></div><div class="form-group"><label>Port</label><input type="number" id="set-port" value="${s.port}"></div><div class="form-group"><label class="checkbox-label"><input type="checkbox" id="set-autostart" ${s.auto_start?'checked':''}> Auto-start on boot</label></div><div class="form-group" style="display:flex;gap:8px"><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button><button class="btn btn-red" onclick="deleteServer()">Delete Server</button></div></div>`;
+  let html='<div class="settings-form"><div class="form-group"><label>Server Name</label><input type="text" id="set-name" value="${esc(s.name)}"></div><div class="form-group"><label>Server Jar</label><input type="text" id="set-jar" value="${esc(s.jar_file)}"></div><div class="form-group"><label>Java Path</label><input type="text" id="set-java-path" value="${esc(s.java_path||'')}" placeholder="/usr/lib/jvm/java-21/bin/java"></div><div class="form-group"><label>Java Arguments</label><input type="text" id="set-java" value="${esc(s.java_args)}"></div><div class="form-group"><label>Port</label><input type="number" id="set-port" value="${s.port}"></div><div class="form-group"><label class="checkbox-label"><input type="checkbox" id="set-autostart" ${s.auto_start?'checked':''}> Auto-start on boot</label></div><div class="form-group" style="display:flex;gap:8px"><button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>${hasPerm('server_delete')?'<button class="btn btn-red" onclick="deleteServer()">Delete Server</button>':''}</div></div>';
+  $('#tab-content').innerHTML=html;
 }
 window.saveSettings=async function(){const body={name:$('#set-name').value,jar_file:$('#set-jar').value,java_path:$('#set-java-path').value,java_args:$('#set-java').value,port:parseInt($('#set-port').value)||25565,auto_start:$('#set-autostart').checked};try{const s=await api('/servers/'+selectedId,{method:'PUT',body:JSON.stringify(body)});const idx=servers.findIndex(x=>x.id===s.id);if(idx!==-1)servers[idx]=s;renderSidebar();showTab(currentTab);showModal('Saved','Settings saved.');}catch(e){showModal('Error',esc(e.message));}};
-window.deleteServer=async function(){const s=servers.find(x=>x.id===selectedId);if(!s)return;if(!await showModal('Delete Server','Permanently delete server "'+s.name+'"?',{ok:'Delete',cancel:'Cancel'}))return;if(!await showModal('Confirm','Are you sure?',{ok:'Yes, Delete',cancel:'Cancel'}))return;try{await api('/servers/'+selectedId,{method:'DELETE'});selectedId=null;await loadServers();$('#server-view').style.display='none';$('#welcome').style.display='flex';}catch(e){showModal('Error',esc(e.message));}};
+window.deleteServer=async function(){if(!hasPerm('server_delete'))return;const s=servers.find(x=>x.id===selectedId);if(!s)return;if(!await showModal('Delete Server','Permanently delete server "'+s.name+'"?',{ok:'Delete',cancel:'Cancel'}))return;if(!await showModal('Confirm','Are you sure?',{ok:'Yes, Delete',cancel:'Cancel'}))return;try{await api('/servers/'+selectedId,{method:'DELETE'});selectedId=null;await loadServers();$('#server-view').style.display='none';$('#welcome').style.display='flex';}catch(e){showModal('Error',esc(e.message));}};
 
 /* ── World ── */
 async function renderWorld(s){if(!hasPerm('world')){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
@@ -408,20 +418,20 @@ window.uploadWorld=function(){const i=document.createElement('input');i.type='fi
 async function doWorldUpload(file){const pb=$('#world-upload-progress');if(!pb)return;pb.style.display='block';$('#wu-filename').textContent=file.name;const fd=new FormData();fd.append('file',file);const x=new XMLHttpRequest();x.upload.onprogress=e=>{if(e.lengthComputable){$('#wu-percent').textContent=Math.round(e.loaded/e.total*100)+'%';$('#wu-fill').style.width=Math.round(e.loaded/e.total*100)+'%';}};x.onload=()=>{pb.style.display='none';if(x.status>=200&&x.status<300){showModal('Success','World uploaded.');renderWorld(servers.find(s=>s.id===selectedId));}else showModal('Error',x.responseText||'Upload failed');};x.onerror=()=>{pb.style.display='none';showModal('Error','Network error');};x.open('POST',API+'/servers/'+selectedId+'/world/upload?token='+authToken);x.send(fd);}
 
 /* ── Backups ── */
-async function renderBackups(s){if(!hasPerm('backups')){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
+async function renderBackups(s){if(!hasAnyPerm(['backups_create','backups_delete','backups_restore'])){$('#tab-content').innerHTML='<div class="empty-state">No access.</div>';return;}
   const el=$('#tab-content');el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading...</div>';
   try{const[backups,folders]=await Promise.all([api('/servers/'+selectedId+'/backups'),api('/servers/'+selectedId+'/world/folders')]);const running=s.status==='running';let html='<div class="section-title">Create Backup</div><div class="backup-form"><p style="font-size:13px;color:var(--text-dim);margin-bottom:10px">Select folders:</p><div class="folder-list" id="backup-folders">';
   const autoChecked=['world','world_nether','world_the_end'];
   if(folders&&folders.length){for(const f of folders){const ch=autoChecked.includes(f.name)?'checked':'';html+='<label class="folder-item"><input type="checkbox" class="folder-cb" value="'+escAttr(f.name)+'" '+ch+'><span class="folder-icon '+(f.is_mod?'mod':'world')+'"></span><span class="folder-name">'+esc(f.name)+'</span><span class="folder-size">'+fmtBytes(f.size)+'</span></label>';}}
-  html+='</div><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-sm" onclick="document.querySelectorAll(\'.folder-cb\').forEach(c=>c.checked=true)">All</button><button class="btn btn-sm" onclick="document.querySelectorAll(\'.folder-cb\').forEach(c=>c.checked=false)">None</button><button class="btn btn-primary" onclick="createBackup()">Create Backup</button><span id="backup-total-size" style="font-size:12px;color:var(--text-dim)"></span></div></div>';
+  html+='</div><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+(hasPerm('backups_create')?'<button class="btn btn-sm" onclick="document.querySelectorAll(\'.folder-cb\').forEach(c=>c.checked=true)">All</button><button class="btn btn-sm" onclick="document.querySelectorAll(\'.folder-cb\').forEach(c=>c.checked=false)">None</button><button class="btn btn-primary" onclick="createBackup()">Create Backup</button>':'')+'<span id="backup-total-size" style="font-size:12px;color:var(--text-dim)"></span></div></div>';
   html+='<div class="section-title" style="margin-top:24px">Saved Backups</div>';
-  if(!backups||!backups.length)html+='<div class="empty-state">No backups.</div>';else{for(const b of backups){html+='<div class="backup-item"><div class="backup-info"><div class="backup-name">'+esc(b.name)+'</div><div class="backup-meta">'+fmtBytes(b.size)+' &middot; '+fmtDate(b.created)+'</div></div><div class="backup-actions"><button class="btn btn-sm" onclick="downloadBackup(\''+escAttr(b.name)+'\')">Download</button><button class="btn btn-sm" onclick="restoreBackup(\''+escAttr(b.name)+'\')" '+(running?'disabled style="opacity:0.4"':'')+'>Restore</button><button class="btn btn-sm btn-red" onclick="deleteBackup(\''+escAttr(b.name)+'\')">Delete</button></div></div>';}}
+  if(!backups||!backups.length)html+='<div class="empty-state">No backups.</div>';else{for(const b of backups){html+='<div class="backup-item"><div class="backup-info"><div class="backup-name">'+esc(b.name)+'</div><div class="backup-meta">'+fmtBytes(b.size)+' &middot; '+fmtDate(b.created)+'</div></div><div class="backup-actions"><button class="btn btn-sm" onclick="downloadBackup(\''+escAttr(b.name)+'\')">Download</button>'+(hasPerm('backups_restore')?'<button class="btn btn-sm" onclick="restoreBackup(\''+escAttr(b.name)+'\')" '+(running?'disabled style="opacity:0.4"':'')+'>Restore</button>':'')+(hasPerm('backups_delete')?'<button class="btn btn-sm btn-red" onclick="deleteBackup(\''+escAttr(b.name)+'\')">Delete</button>':'')+'</div></div>';}}
   el.innerHTML=html;updateBackupSize();el.querySelectorAll('.folder-cb').forEach(cb=>cb.addEventListener('change',updateBackupSize));}catch(e){el.innerHTML='<div class="empty-state">Error: '+esc(e.message)+'</div>';}
 }
 function updateBackupSize(){const el=$('#backup-total-size');if(!el)return;let total=0;$$('.folder-cb:checked').forEach(cb=>{const st=cb.closest('.folder-item')?.querySelector('.folder-size')?.textContent;if(!st)return;const m=st.match(/^([\d.]+)\s*(\w+)/);if(!m)return;const v=parseFloat(m[1]),u=m[2];if(u==='B')total+=v;else if(u==='KB')total+=v*1024;else if(u==='MB')total+=v*1048576;else if(u==='GB')total+=v*1073741824;else if(u==='TB')total+=v*1099511627776;});el.textContent='~'+fmtBytes(total);}
-window.createBackup=async function(){const cbs=$$('.folder-cb:checked');if(!cbs.length){showModal('Error','Select folders.');return;}try{const b=await api('/servers/'+selectedId+'/backups',{method:'POST',body:JSON.stringify({folders:[...cbs].map(c=>c.value)})});showModal('Backup Created','Backup "'+b.name+'" created.');renderBackups(servers.find(s=>s.id===selectedId));}catch(e){showModal('Error',esc(e.message));}};
-window.restoreBackup=async function(n){if(!await showModal('Restore Backup','Restore "'+n+'"?',{ok:'Restore',cancel:'Cancel'}))return;const s=servers.find(x=>x.id===selectedId);if(s&&s.status==='running'){showModal('Error','Server must be stopped.');return;}try{await api('/servers/'+selectedId+'/backups/restore?name='+encodeURIComponent(n),{method:'POST'});showModal('Restored','Done.');}catch(e){showModal('Error',esc(e.message));}};
-window.deleteBackup=async function(n){if(!await showModal('Delete Backup','Delete "'+n+'"?',{ok:'Delete',cancel:'Cancel'}))return;try{await api('/servers/'+selectedId+'/backups?name='+encodeURIComponent(n),{method:'DELETE'});renderBackups(servers.find(s=>s.id===selectedId));}catch(e){showModal('Error',esc(e.message));}};
+window.createBackup=async function(){if(!hasPerm('backups_create'))return;const cbs=$$('.folder-cb:checked');if(!cbs.length){showModal('Error','Select folders.');return;}try{const b=await api('/servers/'+selectedId+'/backups',{method:'POST',body:JSON.stringify({folders:[...cbs].map(c=>c.value)})});showModal('Backup Created','Backup "'+b.name+'" created.');renderBackups(servers.find(s=>s.id===selectedId));}catch(e){showModal('Error',esc(e.message));}};
+window.restoreBackup=async function(n){if(!hasPerm('backups_restore'))return;if(!await showModal('Restore Backup','Restore "'+n+'"?',{ok:'Restore',cancel:'Cancel'}))return;const s=servers.find(x=>x.id===selectedId);if(s&&s.status==='running'){showModal('Error','Server must be stopped.');return;}try{await api('/servers/'+selectedId+'/backups/restore?name='+encodeURIComponent(n),{method:'POST'});showModal('Restored','Done.');}catch(e){showModal('Error',esc(e.message));}};
+window.deleteBackup=async function(n){if(!hasPerm('backups_delete'))return;if(!await showModal('Delete Backup','Delete "'+n+'"?',{ok:'Delete',cancel:'Cancel'}))return;try{await api('/servers/'+selectedId+'/backups?name='+encodeURIComponent(n),{method:'DELETE'});renderBackups(servers.find(s=>s.id===selectedId));}catch(e){showModal('Error',esc(e.message));}};
 window.downloadBackup=function(n){window.open('/api/servers/'+selectedId+'/backups/download?name='+encodeURIComponent(n)+'&token='+authToken,'_blank');};
 
 /* ── Players ── */
@@ -476,12 +486,19 @@ async function renderUsers() {
   } catch(e) { el.innerHTML = '<div class="empty-state">Error: '+esc(e.message)+'</div>'; }
 }
 
+const PERM_GROUPS = [
+  { title: 'General', perms: ['dashboard', 'players', 'settings'] },
+  { title: 'Control', perms: ['start', 'stop', 'restart'] },
+  { title: 'Console', perms: ['console', 'console_send'] },
+  { title: 'Files', perms: ['files_read', 'files_write'] },
+  { title: 'World', perms: ['world'] },
+  { title: 'Backups', perms: ['backups_create', 'backups_delete', 'backups_restore'] },
+  { title: 'Admin', perms: ['server_delete', 'grant'] },
+];
+
 window.showUserModal = async function(editUsername) {
   const isEdit = !!editUsername;
-  const [usersList, serversList] = await Promise.all([
-    isEdit ? null : null,
-    api('/servers'),
-  ]);
+  const serversList = await api('/servers');
   const existingServers = serversList || servers;
 
   let userData = { username: '', password: '', role: 'user', permissions: {} };
@@ -499,19 +516,25 @@ window.showUserModal = async function(editUsername) {
   }
 
   const overlay = $('#modal-overlay');
+  const modal = overlay.querySelector('.modal');
+  modal.classList.add('wide');
   $('#modal-title').textContent = isEdit ? 'Edit User: ' + editUsername : 'Add User';
   $('#modal-confirm').textContent = isEdit ? 'Save' : 'Create';
 
   let permHTML = '';
   for (const s of existingServers) {
     const perms = (userData.permissions[s.id] || []);
-    const permList = ['dashboard', 'console', 'files', 'world', 'backups', 'players', 'settings'];
-    permHTML += '<div class="perm-server"><strong>' + esc(s.name) + '</strong><div class="perm-grid">';
-    for (const p of permList) {
-      const checked = perms.includes(p) ? 'checked' : '';
-      permHTML += `<label class="perm-label"><input type="checkbox" class="perm-cb" data-server="${escAttr(s.id)}" data-perm="${p}" ${checked}> ${p}</label>`;
+    permHTML += '<div class="perm-server" data-server-id="' + escAttr(s.id) + '">';
+    permHTML += '<div class="perm-server-header"><strong>' + esc(s.name) + '</strong><div class="perm-server-actions"><button class="btn btn-sm" data-selall="' + escAttr(s.id) + '">All</button><button class="btn btn-sm" data-selnone="' + escAttr(s.id) + '">None</button></div></div>';
+    for (const g of PERM_GROUPS) {
+      permHTML += '<div class="perm-group"><div class="perm-group-title">' + esc(g.title) + '</div><div class="perm-grid">';
+      for (const p of g.perms) {
+        const checked = perms.includes(p) ? 'checked' : '';
+        permHTML += `<label class="perm-label"><input type="checkbox" class="perm-cb" data-server="${escAttr(s.id)}" data-perm="${p}" ${checked}> ${p.replace('_', ' ')}</label>`;
+      }
+      permHTML += '</div></div>';
     }
-    permHTML += '</div></div>';
+    permHTML += '</div>';
   }
 
   $('#modal-body').innerHTML = `
@@ -523,6 +546,24 @@ window.showUserModal = async function(editUsername) {
       ${permHTML || '<div class="empty-state" style="padding:12px">No servers yet.</div>'}
     </div>`;
 
+  $('#modal-body').classList.add('modal-body-scroll');
+
+  // Select All / None per server
+  $$('[data-selall]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sid = btn.dataset.selall;
+      const server = overlay.querySelector('.perm-server[data-server-id="' + sid + '"]');
+      if (server) server.querySelectorAll('.perm-cb').forEach(cb => cb.checked = true);
+    });
+  });
+  $$('[data-selnone]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sid = btn.dataset.selnone;
+      const server = overlay.querySelector('.perm-server[data-server-id="' + sid + '"]');
+      if (server) server.querySelectorAll('.perm-cb').forEach(cb => cb.checked = false);
+    });
+  });
+
   // Toggle perms section visibility based on role
   $('#mu-role').addEventListener('change', () => {
     $('#mu-perms-section').style.display = $('#mu-role').value === 'admin' ? 'none' : '';
@@ -533,7 +574,6 @@ window.showUserModal = async function(editUsername) {
   overlay.dataset.edit = isEdit ? editUsername : '';
 
   // Override form submit
-  const origSubmit = $('#modal-form').onsubmit;
   $('#modal-form').onsubmit = async (e) => {
     e.preventDefault();
     const username = $('#mu-name').value.trim();
@@ -583,7 +623,12 @@ function openModal(server) {
 $('#modal-cancel').addEventListener('click',closeModal);
 $('#modal-overlay').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
 $('#manage-users-btn').addEventListener('click',showUserManagement);
-function closeModal(){$('#modal-overlay').style.display='none';$('#modal-overlay').dataset.edit='';}
+function closeModal(){
+  $('#modal-overlay').style.display='none';
+  $('#modal-overlay').dataset.edit='';
+  $('#modal-overlay').querySelector('.modal').classList.remove('wide');
+  $('#modal-body').classList.remove('modal-body-scroll');
+}
 
 /* ── Init ── */
 async function loadServers() {

@@ -107,7 +107,7 @@ func backupDir(serverPath string) string {
 
 func (h *Handler) BackupList(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "backups") {
+	if !h.checkPerm(w, r, id, "backups_create", "backups_delete", "backups_restore") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -148,7 +148,7 @@ func (h *Handler) BackupList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "backups") {
+	if !h.checkPerm(w, r, id, "backups_create") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -215,7 +215,7 @@ func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "backups") {
+	if !h.checkPerm(w, r, id, "backups_create", "backups_delete", "backups_restore") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -243,7 +243,7 @@ func (h *Handler) BackupDownload(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupRestore(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "backups") {
+	if !h.checkPerm(w, r, id, "backups_restore") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -305,7 +305,7 @@ func (h *Handler) BackupRestore(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "backups") {
+	if !h.checkPerm(w, r, id, "backups_delete") {
 		return
 	}
 	inst := h.manager.Get(id)

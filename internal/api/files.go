@@ -45,7 +45,7 @@ func (h *Handler) safePath(id, subPath string) (string, error) {
 
 func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_read") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -85,7 +85,7 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_write") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -136,7 +136,7 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_read") {
 		return
 	}
 	filePath := r.URL.Query().Get("path")
@@ -171,7 +171,7 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RenameFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_write") {
 		return
 	}
 	filePath := r.URL.Query().Get("path")
@@ -213,7 +213,7 @@ func (h *Handler) RenameFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_read") {
 		return
 	}
 	filePath := r.URL.Query().Get("path")
@@ -255,7 +255,7 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_write") {
 		return
 	}
 	filePath := r.URL.Query().Get("path")
@@ -284,7 +284,7 @@ func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "files") {
+	if !h.checkPerm(w, r, id, "files_write") {
 		return
 	}
 	filePath := r.URL.Query().Get("path")

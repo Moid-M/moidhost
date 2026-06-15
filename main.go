@@ -41,6 +41,9 @@ func main() {
 		case "reset-password":
 			cmdResetPassword()
 			return
+		case "restart":
+			cmdRestart()
+			return
 		case "help", "-h", "--help":
 			printHelp()
 			return
@@ -55,7 +58,8 @@ func printHelp() {
 Usage:
   moidhost              Start the web server
   moidhost version      Print version
-  moidhost update       Self-update (builds from source)
+  moidhost update       Self-update from source and restart service (requires sudo)
+  moidhost restart      Restart the systemd service (requires sudo)
   moidhost uninstall    Remove binary, service, and data (requires sudo)
   moidhost reset-password  Reset admin password (requires sudo)
 
@@ -191,7 +195,29 @@ func cmdUpdate() {
 		log.Fatalf("failed to build: %v (is Go installed?)", err)
 	}
 
-	fmt.Println("==> Update complete. Restart moidhost to apply.")
+	fmt.Println("==> Build complete. Restarting service...")
+	if err := restartService(); err != nil {
+		fmt.Printf("  WARNING: could not restart service: %v\n", err)
+		fmt.Println("  Restart manually: sudo systemctl restart moidhost")
+	} else {
+		fmt.Println("==> Service restarted.")
+	}
+}
+
+func cmdRestart() {
+	if os.Geteuid() != 0 {
+		fmt.Println("This command requires root. Run with sudo.")
+		os.Exit(1)
+	}
+	fmt.Println("==> Restarting moidhost service...")
+	if err := restartService(); err != nil {
+		log.Fatalf("failed to restart: %v", err)
+	}
+	fmt.Println("==> Service restarted.")
+}
+
+func restartService() error {
+	return exec.Command("systemctl", "restart", "moidhost").Run()
 }
 
 func cmdUninstall() {

@@ -52,15 +52,17 @@ func toResponse(inst *server.Instance) serverResponse {
 	}
 }
 
-func (h *Handler) checkPerm(w http.ResponseWriter, r *http.Request, id, perm string) bool {
+func (h *Handler) checkPerm(w http.ResponseWriter, r *http.Request, id string, perms ...string) bool {
 	if GetRoleFromCtx(r) == "admin" {
 		return true
 	}
-	if !h.auth.CheckPermission(r, id, perm) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return false
+	for _, perm := range perms {
+		if h.auth.CheckPermission(r, id, perm) {
+			return true
+		}
 	}
-	return true
+	http.Error(w, "forbidden", http.StatusForbidden)
+	return false
 }
 
 func (h *Handler) ListServers(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +151,7 @@ func (h *Handler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "settings") {
+	if !h.checkPerm(w, r, id, "server_delete") {
 		return
 	}
 	if err := h.manager.Delete(id); err != nil {
@@ -161,7 +163,7 @@ func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "dashboard") {
+	if !h.checkPerm(w, r, id, "start") {
 		return
 	}
 	if err := h.manager.Start(id); err != nil {
@@ -174,7 +176,7 @@ func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "dashboard") {
+	if !h.checkPerm(w, r, id, "stop") {
 		return
 	}
 	if err := h.manager.Stop(id); err != nil {
@@ -187,7 +189,7 @@ func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) KillServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "dashboard") {
+	if !h.checkPerm(w, r, id, "stop") {
 		return
 	}
 	if err := h.manager.Kill(id); err != nil {
@@ -200,7 +202,7 @@ func (h *Handler) KillServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "dashboard") {
+	if !h.checkPerm(w, r, id, "restart") {
 		return
 	}
 	if err := h.manager.Restart(id); err != nil {
@@ -213,7 +215,7 @@ func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) AcceptEULA(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "settings") {
+	if !h.checkPerm(w, r, id, "start") {
 		return
 	}
 	inst := h.manager.Get(id)
@@ -341,7 +343,7 @@ func (h *Handler) SystemStats(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.checkPerm(w, r, id, "console") {
+	if !h.checkPerm(w, r, id, "console_send") {
 		return
 	}
 	var req struct {
