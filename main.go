@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
