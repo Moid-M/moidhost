@@ -20,9 +20,9 @@ curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | s
 # One-liner: download and install as a systemd service
 curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
 
-# Or just download and run directly
-curl -sL https://github.com/Moid-M/moidhost/releases/latest/download/moidhost-linux-amd64 -o moidhost \
-  && chmod +x moidhost && ./moidhost
+# Or just build and run directly
+go install github.com/Moid-M/moidhost@latest
+moidhost
 ```
 
 Open `http://localhost:8080` in your browser.
@@ -55,23 +55,34 @@ Or if you already have the repo cloned:
 sudo ./install.sh
 ```
 
-Installs the binary to `/usr/local/bin`, creates `/var/lib/moidhost/` for data, and sets up a systemd service.
+Installs the binary to `/usr/local/bin`, creates `/var/lib/moidhost/` for data, and sets up a systemd service. The install script auto-installs Go if it's not present on your system.
+
+## CLI
+
+Once installed, `moidhost` provides several commands:
+
+```bash
+moidhost              Start the web server
+moidhost version      Print version
+sudo moidhost update  Self-update (clones repo + rebuilds)
+sudo moidhost uninstall  Remove binary, service, and data
+```
 
 ## Update
 
 ```bash
-sudo ./update.sh
+sudo moidhost update
 ```
 
-Pulls the latest release or builds from source if no release is found.
+Pulls the latest source from GitHub and rebuilds the binary.
 
 ## Uninstall
 
 ```bash
-sudo ./uninstall.sh
+sudo moidhost uninstall
 ```
 
-Stops the service, removes the binary and (optionally) your data.
+Stops the service, removes the binary, systemd unit, and optionally your data.
 
 ## Build from source
 

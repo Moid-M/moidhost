@@ -6,17 +6,53 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 
 	"moidhost/internal/api"
 	"moidhost/internal/config"
 	"moidhost/internal/server"
 )
 
+const Version = "0.1.0"
+
 //go:embed web
 var webFS embed.FS
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version", "-v", "--version":
+			fmt.Printf("moidhost v%s %s/%s\n", Version, runtime.GOOS, runtime.GOARCH)
+			return
+		case "update":
+			cmdUpdate()
+			return
+		case "uninstall":
+			cmdUninstall()
+			return
+		case "help", "-h", "--help":
+			printHelp()
+			return
+		}
+	}
+	startServer()
+}
+
+func printHelp() {
+	fmt.Println(`moidhost - Minecraft server manager
+
+Usage:
+  moidhost              Start the web server
+  moidhost version      Print version
+  moidhost update       Self-update (builds from source)
+  moidhost uninstall    Remove binary, service, and data
+
+Docs: https://github.com/Moid-M/moidhost`)
+}
+
+func startServer() {
 	dataDir := "."
 	if env := os.Getenv("MOIDHOST_DATA"); env != "" {
 		dataDir = env
@@ -44,6 +80,72 @@ func main() {
 	}
 
 	addr := fmt.Sprintf(":%d", port)
-	log.Printf("moidhost listening on http://localhost%s", addr)
+	log.Printf("moidhost v%s listening on http://localhost%s", Version, addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
+}
+
+func cmdUpdate() {
+	self, err := os.Executable()
+	if err != nil {
+		log.Fatalf("failed to find self: %v", err)
+	}
+
+	fmt.Println("==> Updating moidhost from source...")
+
+	tmp, err := os.MkdirTemp("", "moidhost-update-")
+	if err != nil {
+		log.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmp)
+
+	cmd := exec.Command("git", "clone", "--depth=1",
+		"https://github.com/Moid-M/moidhost.git", tmp)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("failed to clone repo: %v", err)
+	}
+
+	build := exec.Command("go", "build", "-o", self, ".")
+	build.Dir = tmp
+	build.Stdout = os.Stdout
+	build.Stderr = os.Stderr
+	if err := build.Run(); err != nil {
+		log.Fatalf("failed to build: %v (is Go installed?)", err)
+	}
+
+	fmt.Println("==> Update complete. Restart moidhost to apply.")
+}
+
+func cmdUninstall() {
+	fmt.Println("==> Uninstalling moidhost...")
+
+	if os.Geteuid() != 0 {
+		fmt.Println("This command requires root. Run with sudo.")
+		os.Exit(1)
+	}
+
+	self, err := os.Executable()
+	if err != nil {
+		log.Fatalf("failed to find self: %v", err)
+	}
+
+	exec.Command("systemctl", "stop", "moidhost").Run()
+	exec.Command("systemctl", "disable", "moidhost").Run()
+	os.Remove("/etc/systemd/system/moidhost.service")
+	exec.Command("systemctl", "daemon-reload").Run()
+	fmt.Println("  Service removed.")
+
+	os.Remove(self)
+	fmt.Printf("  Binary removed (%s).\n", self)
+
+	dataDir := os.Getenv("MOIDHOST_DATA")
+	if dataDir == "" {
+		dataDir = "/var/lib/moidhost"
+	}
+	if info, err := os.Stat(dataDir); err == nil && info.IsDir() {
+		fmt.Printf("  Data directory (%s) preserved. Remove manually if desired.\n", dataDir)
+	}
+
+	fmt.Println("==> Uninstall complete.")
 }
