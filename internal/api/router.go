@@ -35,6 +35,10 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 	mux.HandleFunc("DELETE /api/servers/{id}/files", h.DeleteFile)
 	mux.HandleFunc("POST /api/servers/{id}/upload", h.UploadFile)
 	mux.HandleFunc("GET /api/servers/{id}/download", h.DownloadFile)
+	mux.HandleFunc("GET /api/servers/{id}/file", h.ReadFile)
+	mux.HandleFunc("PUT /api/servers/{id}/file", h.WriteFile)
+	mux.HandleFunc("POST /api/servers/{id}/eula", h.AcceptEULA)
+	mux.HandleFunc("GET /api/servers/{id}/players", h.ServerPlayers)
 
 	mux.HandleFunc("GET /api/system/stats", h.SystemStats)
 

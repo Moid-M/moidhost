@@ -199,6 +199,69 @@ func (h *Handler) RenameFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+	fullPath, err := h.safePath(r.PathValue("id"), filePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	data, err := os.ReadFile(fullPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	contentType := "text/plain"
+	if strings.HasSuffix(filePath, ".json") {
+		contentType = "application/json"
+	} else if strings.HasSuffix(filePath, ".html") || strings.HasSuffix(filePath, ".htm") {
+		contentType = "text/html"
+	} else if strings.HasSuffix(filePath, ".yml") || strings.HasSuffix(filePath, ".yaml") {
+		contentType = "text/yaml"
+	} else if strings.HasSuffix(filePath, ".properties") {
+		contentType = "text/plain"
+	} else if strings.HasSuffix(filePath, ".xml") {
+		contentType = "text/xml"
+	} else if strings.HasSuffix(filePath, ".png") || strings.HasSuffix(filePath, ".jpg") || strings.HasSuffix(filePath, ".jpeg") || strings.HasSuffix(filePath, ".gif") || strings.HasSuffix(filePath, ".ico") {
+		contentType = ""
+	}
+	if contentType != "" {
+		w.Header().Set("Content-Type", contentType)
+	} else {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	w.Write(data)
+}
+
+func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
+	filePath := r.URL.Query().Get("path")
+	if filePath == "" {
+		http.Error(w, "path required", http.StatusBadRequest)
+		return
+	}
+	fullPath, err := h.safePath(r.PathValue("id"), filePath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := os.WriteFile(fullPath, []byte(req.Content), 0644); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	filePath := r.URL.Query().Get("path")
