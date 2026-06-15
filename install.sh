@@ -62,7 +62,7 @@ if ! id -u moidhost &>/dev/null; then
 fi
 
 # Create and chown data directory
-mkdir -p "$DATADIR"
+mkdir -p "$DATADIR/servers"
 chown -R moidhost:moidhost "$DATADIR"
 echo "  Data directory: $DATADIR"
 

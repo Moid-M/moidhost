@@ -86,6 +86,9 @@ func (m *Manager) Create(sc config.ServerConfig) error {
 		return fmt.Errorf("server %s already exists", sc.ID)
 	}
 
+	if err := os.MkdirAll(m.cfg.DataDir, 0755); err != nil {
+		return fmt.Errorf("cannot create servers directory: %w", err)
+	}
 	serverDir := filepath.Join(m.cfg.DataDir, sc.ID)
 	if err := os.MkdirAll(serverDir, 0755); err != nil {
 		return err
