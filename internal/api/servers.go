@@ -10,13 +10,14 @@ import (
 )
 
 type serverResponse struct {
-	ID       string        `json:"id"`
-	Name     string        `json:"name"`
-	JarFile  string        `json:"jar_file"`
-	JavaArgs string        `json:"java_args"`
-	Port     int           `json:"port"`
-	Status   server.Status `json:"status"`
-	AutoStart bool         `json:"auto_start"`
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	JarFile   string        `json:"jar_file"`
+	JavaPath  string        `json:"java_path"`
+	JavaArgs  string        `json:"java_args"`
+	Port      int           `json:"port"`
+	Status    server.Status `json:"status"`
+	AutoStart bool          `json:"auto_start"`
 }
 
 func toResponse(inst *server.Instance) serverResponse {
@@ -24,6 +25,7 @@ func toResponse(inst *server.Instance) serverResponse {
 		ID:        inst.Config.ID,
 		Name:      inst.Config.Name,
 		JarFile:   inst.Config.JarFile,
+		JavaPath:  inst.Config.JavaPath,
 		JavaArgs:  inst.Config.JavaArgs,
 		Port:      inst.Config.Port,
 		Status:    inst.Status,

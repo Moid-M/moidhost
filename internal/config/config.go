@@ -7,13 +7,14 @@ import (
 )
 
 type ServerConfig struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	JarFile  string `json:"jar_file"`
-	JavaArgs string `json:"java_args"`
-	Port     int    `json:"port"`
-	AutoStart bool  `json:"auto_start"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	JarFile   string `json:"jar_file"`
+	JavaPath  string `json:"java_path"`
+	JavaArgs  string `json:"java_args"`
+	Port      int    `json:"port"`
+	AutoStart bool   `json:"auto_start"`
 }
 
 type Config struct {

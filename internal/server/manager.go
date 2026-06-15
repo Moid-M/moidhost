@@ -53,6 +53,12 @@ func NewManager(store *config.Store) (*Manager, error) {
 			Status: StatusStopped,
 		}
 	}
+	for i := range cfg.Servers {
+		if cfg.Servers[i].AutoStart {
+			id := cfg.Servers[i].ID
+			go func() { m.Start(id) }()
+		}
+	}
 	return m, nil
 }
 
@@ -113,6 +119,25 @@ func (m *Manager) Update(id string, sc config.ServerConfig) error {
 		return fmt.Errorf("cannot update running server")
 	}
 
+	// Preserve existing values for empty/zero fields
+	old := inst.Config
+	if sc.Name != "" {
+		old.Name = sc.Name
+	}
+	if sc.JarFile != "" {
+		old.JarFile = sc.JarFile
+	}
+	if sc.JavaArgs != "" {
+		old.JavaArgs = sc.JavaArgs
+	}
+	if sc.JavaPath != "" {
+		old.JavaPath = sc.JavaPath
+	}
+	if sc.Port != 0 {
+		old.Port = sc.Port
+	}
+	old.AutoStart = sc.AutoStart
+	sc = old
 	sc.Path = inst.Config.Path
 	inst.Config = sc
 
@@ -167,9 +192,13 @@ func (m *Manager) Start(id string) error {
 	}
 
 	// Check Java is available
-	if _, err := exec.LookPath("java"); err != nil {
+	javaBin := inst.Config.JavaPath
+	if javaBin == "" {
+		javaBin = "java"
+	}
+	if _, err := exec.LookPath(javaBin); err != nil {
 		m.mu.Unlock()
-		return fmt.Errorf("java not found in PATH. Install Java (e.g. openjdk-21-jre-headless)")
+		return fmt.Errorf("java not found at %q. Set a custom path in server settings or install Java (e.g. openjdk-21-jre-headless)", javaBin)
 	}
 
 	// Check jar file exists
@@ -190,7 +219,7 @@ func (m *Manager) Start(id string) error {
 	}
 	javaArgs = append(javaArgs, inst.Config.JarFile, "nogui")
 
-	if err := proc.Start("java", javaArgs, inst.Config.Path); err != nil {
+	if err := proc.Start(javaBin, javaArgs, inst.Config.Path); err != nil {
 		m.mu.Lock()
 		inst.Status = StatusCrashed
 		m.mu.Unlock()

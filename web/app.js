@@ -373,19 +373,30 @@ function renderSettings(s) {
         <input type="text" id="set-name" value="${esc(s.name)}">
       </div>
       <div class="form-group">
-        <label>Java Arguments</label>
-        <input type="text" id="set-java" value="${esc(s.java_args)}">
-      </div>
-      <div class="form-group">
         <label>Server Jar (filename inside server directory)</label>
         <input type="text" id="set-jar" value="${esc(s.jar_file)}">
+      </div>
+      <div class="form-group">
+        <label>Java Path (leave empty for default "java")</label>
+        <input type="text" id="set-java-path" value="${esc(s.java_path || '')}" placeholder="/usr/lib/jvm/java-21-openjdk/bin/java">
+      </div>
+      <div class="form-group">
+        <label>Java Arguments</label>
+        <input type="text" id="set-java" value="${esc(s.java_args)}">
       </div>
       <div class="form-group">
         <label>Port</label>
         <input type="number" id="set-port" value="${s.port}">
       </div>
       <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="set-autostart" ${s.auto_start ? 'checked' : ''}>
+          Auto-start on boot
+        </label>
+      </div>
+      <div class="form-group" style="display:flex;gap:8px">
         <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+        <button class="btn btn-red" onclick="deleteServer()">Delete Server</button>
       </div>
     </div>
   `;
@@ -394,9 +405,11 @@ function renderSettings(s) {
 window.saveSettings = async function() {
   const body = {
     name: $('#set-name').value,
-    java_args: $('#set-java').value,
     jar_file: $('#set-jar').value,
+    java_path: $('#set-java-path').value,
+    java_args: $('#set-java').value,
     port: parseInt($('#set-port').value) || 25565,
+    auto_start: $('#set-autostart').checked,
   };
   try {
     const s = await api(`/servers/${selectedId}`, {
@@ -408,6 +421,20 @@ window.saveSettings = async function() {
     renderSidebar();
     showTab(currentTab);
     alert('Settings saved');
+  } catch (e) { alert(e.message); }
+};
+
+window.deleteServer = async function() {
+  const s = servers.find(x => x.id === selectedId);
+  if (!s) return;
+  if (!confirm('Permanently delete server "' + s.name + '"? This will remove ALL files including worlds.')) return;
+  if (!confirm('Are you sure? There is no undo for "' + s.name + '".')) return;
+  try {
+    await api('/servers/' + selectedId, { method: 'DELETE' });
+    selectedId = null;
+    await loadServers();
+    $('#server-view').style.display = 'none';
+    $('#welcome').style.display = 'flex';
   } catch (e) { alert(e.message); }
 };
 
@@ -434,8 +461,18 @@ function openModal(server) {
       <input type="text" id="f-java" value="${isEdit ? esc(server.java_args) : '-Xmx1G -Xms1G'}" placeholder="-Xmx1G -Xms1G">
     </div>
     <div class="form-group">
+      <label>Java Path (leave empty for default)</label>
+      <input type="text" id="f-java-path" value="${isEdit ? esc(server.java_path || '') : ''}" placeholder="/usr/lib/jvm/java-21-openjdk/bin/java">
+    </div>
+    <div class="form-group">
       <label>Port</label>
       <input type="number" id="f-port" value="${isEdit ? server.port : 25565}" placeholder="25565">
+    </div>
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" id="f-autostart" ${isEdit && server.auto_start ? 'checked' : ''}>
+        Auto-start on boot
+      </label>
     </div>
   `;
   overlay.style.display = 'flex';
@@ -454,7 +491,9 @@ $('#modal-form').addEventListener('submit', async e => {
     name: $('#f-name').value,
     jar_file: $('#f-jar').value,
     java_args: $('#f-java').value || '-Xmx1G -Xms1G',
+    java_path: $('#f-java-path').value,
     port: parseInt($('#f-port').value) || 25565,
+    auto_start: $('#f-autostart').checked,
   };
   if (!body.name || !body.jar_file) { alert('Name and jar file are required'); return; }
   try {
