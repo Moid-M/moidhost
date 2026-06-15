@@ -15,6 +15,10 @@ type consoleMsg struct {
 func (h *Handler) ConsoleWS(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
+	if !h.checkPerm(w, r, id, "console") {
+		return
+	}
+
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -75,6 +79,9 @@ func (h *Handler) ConsoleWS(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "console") {
+		return
+	}
 	logs, err := h.manager.GetLogs(id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)

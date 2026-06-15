@@ -29,6 +29,9 @@ type backupEntry struct {
 
 func (h *Handler) WorldInfo(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "world") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -104,6 +107,9 @@ func backupDir(serverPath string) string {
 
 func (h *Handler) BackupList(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "backups") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -142,6 +148,9 @@ func (h *Handler) BackupList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "backups") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -206,6 +215,9 @@ func (h *Handler) BackupCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "backups") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -231,6 +243,9 @@ func (h *Handler) BackupDownload(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupRestore(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "backups") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -290,6 +305,9 @@ func (h *Handler) BackupRestore(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) BackupDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "backups") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -314,6 +332,9 @@ func (h *Handler) BackupDelete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) WorldDownload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "world") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -361,6 +382,9 @@ func (h *Handler) WorldDownload(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) WorldUpload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "world") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -524,6 +548,9 @@ func zipWorlds(zipPath string, dirs []string, serverPath string) error {
 
 func (h *Handler) WorldFolders(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "world") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -546,11 +573,6 @@ func (h *Handler) WorldFolders(w http.ResponseWriter, r *http.Request) {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || e.Name() == "backups" {
 			continue
 		}
-		info, _ := e.Info()
-		var size int64
-		if info != nil {
-			size = info.Size()
-		}
 		isMod := e.Name() == "plugins" || e.Name() == "mods" || e.Name() == "datapacks"
 		folders = append(folders, struct {
 			Name  string `json:"name"`
@@ -568,6 +590,9 @@ func (h *Handler) WorldFolders(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) WorldDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "world") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)

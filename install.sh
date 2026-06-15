@@ -112,6 +112,36 @@ else
   echo "  Java found: $(java -version 2>&1 | head -1)"
 fi
 
+# Admin account setup
+echo ""
+echo "==> Admin Account Setup"
+echo "  Create the admin account for the web interface."
+read -r -p "  Username [admin]: " ADMIN_USER
+ADMIN_USER="${ADMIN_USER:-admin}"
+ADMIN_PASS=""
+while true; do
+  read -r -s -p "  Password: " ADMIN_PASS
+  echo
+  if [ -z "$ADMIN_PASS" ]; then
+    echo "  Password cannot be empty."
+    continue
+  fi
+  read -r -s -p "  Confirm: " ADMIN_PASS2
+  echo
+  if [ "$ADMIN_PASS" != "$ADMIN_PASS2" ]; then
+    echo "  Passwords do not match. Try again."
+    continue
+  fi
+  break
+done
+mkdir -p "$DATADIR"
+cat > "$DATADIR/.setup_admin" <<EOF
+{"username":"$ADMIN_USER","password":"$ADMIN_PASS"}
+EOF
+chmod 600 "$DATADIR/.setup_admin"
+chown moidhost:moidhost "$DATADIR/.setup_admin"
+echo "  Admin account will be created on first start."
+
 echo ""
 echo "==> Installation complete!"
 echo ""
@@ -121,9 +151,10 @@ echo "  Enable: sudo systemctl enable moidhost"
 echo "  Logs:   sudo journalctl -u moidhost -f"
 echo ""
 echo "  CLI commands:"
-echo "    moidhost             Start the web server"
-echo "    moidhost version     Print version"
-echo "    sudo moidhost update Self-update"
-echo "    sudo moidhost uninstall  Remove everything"
+echo "    moidhost                    Start the web server"
+echo "    moidhost version            Print version"
+echo "    sudo moidhost update        Self-update"
+echo "    sudo moidhost uninstall     Remove everything"
+echo "    sudo moidhost reset-password  Reset admin password"
 echo ""
 echo "  Open http://localhost:8080 once the service is running."

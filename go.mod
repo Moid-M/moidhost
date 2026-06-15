@@ -2,4 +2,8 @@ module moidhost
 
 go 1.23.4
 
-require github.com/coder/websocket v1.8.15 // indirect
+require (
+	github.com/coder/websocket v1.8.15
+	golang.org/x/crypto v0.32.0
+	golang.org/x/term v0.28.0
+)

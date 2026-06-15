@@ -45,6 +45,9 @@ func (h *Handler) safePath(id, subPath string) (string, error) {
 
 func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -82,6 +85,9 @@ func (h *Handler) ListFiles(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -130,6 +136,9 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
@@ -162,6 +171,9 @@ func (h *Handler) DownloadFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RenameFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
@@ -200,12 +212,16 @@ func (h *Handler) RenameFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
 		return
 	}
-	fullPath, err := h.safePath(r.PathValue("id"), filePath)
+	fullPath, err := h.safePath(id, filePath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -238,12 +254,16 @@ func (h *Handler) ReadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)
 		return
 	}
-	fullPath, err := h.safePath(r.PathValue("id"), filePath)
+	fullPath, err := h.safePath(id, filePath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -264,6 +284,9 @@ func (h *Handler) WriteFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "files") {
+		return
+	}
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "path required", http.StatusBadRequest)

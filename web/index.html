@@ -2,20 +2,25 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>moidhost</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <div id="app">
+  <div id="login-page" style="display:none"></div>
+  <div id="app" style="display:none">
     <aside id="sidebar">
       <div class="sidebar-header">
         <h1 onclick="closeSidebar()">moidhost</h1>
+        <span id="sidebar-user"></span>
       </div>
       <div class="sidebar-actions">
         <button id="new-server-btn" class="btn btn-primary">+ New Server</button>
       </div>
       <div id="server-list"></div>
+      <div class="sidebar-footer">
+        <button class="btn btn-sm" onclick="logout()" style="width:100%">Logout</button>
+      </div>
     </aside>
     <div id="sidebar-overlay"></div>
     <main id="main-content">
@@ -29,7 +34,7 @@
           <h2 id="server-name"></h2>
           <span id="server-status" class="status-badge"></span>
         </div>
-        <nav class="tabs">
+        <nav class="tabs" id="tab-bar">
           <button class="tab active" data-tab="dashboard">Dashboard</button>
           <button class="tab" data-tab="console">Console</button>
           <button class="tab" data-tab="files">Files</button>
@@ -37,6 +42,7 @@
           <button class="tab" data-tab="backups">Backups</button>
           <button class="tab" data-tab="players">Players</button>
           <button class="tab" data-tab="settings">Settings</button>
+          <button class="tab" data-tab="users" id="users-tab" style="display:none">Users</button>
         </nav>
         <div id="tab-content"></div>
       </div>

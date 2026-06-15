@@ -1,122 +1,266 @@
-# moidhost
+<div align="center">
+  <br>
+  <h1 align="center">🟣 moidhost</h1>
+  <p align="center">
+    <strong>Your Minecraft servers. One binary. Zero fuss.</strong>
+    <br>
+    A self-hosted Minecraft server manager with a web UI.
+    <br>
+    Run multiple servers. Manage from any browser. No Docker, no PHP, no database.
+    <br>
+    <strong>🔒 No telemetry. No tracking. Everything stays yours.</strong>
+  </p>
+  <p align="center">
+    <a href="#-quick-install">🚀 Quick Install</a>
+    ·
+    <a href="#-features">✨ Features</a>
+    ·
+    <a href="#-commands">⚙️ Commands</a>
+    ·
+    <a href="#-architecture">🏗️ Architecture</a>
+    ·
+    <a href="#-development">🛠️ Development</a>
+  </p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/go-1.23%2B-blue?style=flat-square&logo=go">
+    <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
+    <img src="https://img.shields.io/badge/version-0.1-purple?style=flat-square">
+    <img src="https://img.shields.io/badge/status-beta-brightgreen?style=flat-square">
+  </p>
+  <br>
+</div>
 
-Self-hosted Minecraft server manager. Single binary, zero dependencies.
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%">
+
+**🎮 Multi-Server** — run several Minecraft servers on one machine, each with independent settings
+
+**🖥️ Web Dashboard** — start, stop, restart, kill any server with one click
+
+**📟 Real-Time Console** — interactive WebSocket terminal in your browser — send commands, watch output live
+
+**📂 File Manager** — browse, upload (drag & drop), download, rename, delete, and edit files right in the browser
+
+**🌍 World Management** — download, upload (zip), replace, or delete worlds. Right-click to navigate to Files
+
+</td>
+<td width="50%">
+
+**💾 Backups** — select folders (worlds/plugins/mods/datapacks), create zip backups, restore or download them
+
+**👤 Player Stats** — view known players, play time, distance walked, kills, deaths, K/D ratio from world stats
+
+**📊 System Graphs** — live CPU, RAM, and disk usage with bezier-curve canvas graphs and hover tooltips
+
+**🔐 Authentication** — login with username/password, per-user permissions per server (dashboard/console/files/world/backups/players/settings)
+
+**📱 Mobile Responsive** — collapsible sidebar, bottom-sheet context menu, touch-friendly controls
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🚀 Quick Install
+
+<details>
+<summary><b>One-liner (Linux with systemd)</b></summary>
+<br>
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
 ```
 
-## Features
+<details>
+<summary><b>📦 What the installer does</b></summary>
+<br>
 
-- **Multiple servers** — run several Minecraft servers on one machine
-- **Web UI** — dashboard, real-time console, file manager, settings
-- **Drag & drop upload** — plugins, worlds, configs — just drop them in
-- **Console via WebSocket** — full interactive console in your browser
-- **Lightweight** — 8 MB binary, ~5 MB RAM idle, leaves resources for your servers
+| Step | What happens |
+|---|---|
+| 1 | Detects your distro and installs Go + Java if missing |
+| 2 | Creates a `moidhost` system user |
+| 3 | Builds the binary and installs to `/usr/local/bin` |
+| 4 | Creates data directory at `/var/lib/moidhost` |
+| 5 | **Prompts for admin username and password** |
+| 6 | Installs a systemd service |
+| 7 | Starts the server immediately |
 
-## Quick start
+</details>
 
-```bash
-# One-liner: download and install as a systemd service
-curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
+> **After install**, open **http://your-server-ip:8080** in any browser and log in with the admin account you created.
 
-# Or just build and run directly
-go install github.com/Moid-M/moidhost@latest
-moidhost
-```
+> **moidhost is built with AI-assisted coding.** Most of the code was written through natural language prompts. If something feels off, please [open an issue](https://github.com/Moid-M/moidhost/issues).
 
-Open `http://localhost:8080` in your browser.
+</details>
 
-## Usage
-
-1. Click **+ New Server** and give it a name
-2. Upload your server jar (e.g. `paper-1.21.1.jar`) via the **Files** tab
-3. Set the jar filename in **Settings**
-4. Hit **Start** on the Dashboard
-5. Watch the console, send commands, upload plugins
-
-### Configuration
-
-The server reads `config.json` from the current directory (or `$MOIDHOST_DATA`).
-
-| Env var | Default | Description |
-|---|---|---|
-| `MOIDHOST_DATA` | `.` | Directory for config.json and server data |
-
-## Install
+<details>
+<summary><b>🖥️ Build from source</b></summary>
+<br>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Moid-M/moidhost/main/install.sh | sudo bash
-```
-
-Or if you already have the repo cloned:
-
-```bash
-sudo ./install.sh
-```
-
-Installs the binary to `/usr/local/bin`, creates `/var/lib/moidhost/` for data, and sets up a systemd service. The install script auto-installs Go if it's not present on your system.
-
-## CLI
-
-Once installed, `moidhost` provides several commands:
-
-```bash
-moidhost              Start the web server
-moidhost version      Print version
-sudo moidhost update  Self-update (clones repo + rebuilds)
-sudo moidhost uninstall  Remove binary, service, and data
-```
-
-## Update
-
-```bash
-sudo moidhost update
-```
-
-Pulls the latest source from GitHub and rebuilds the binary.
-
-## Uninstall
-
-```bash
-sudo moidhost uninstall
-```
-
-Stops the service, removes the binary, systemd unit, and optionally your data.
-
-## Build from source
-
-```bash
-make build
-# or
+git clone https://github.com/Moid-M/moidhost.git
+cd moidhost
 go build -o moidhost .
+sudo ./moidhost
 ```
 
-Requires Go 1.22+. No other dependencies.
+Requires Go 1.22+. Java must be installed separately for Minecraft servers to run. Then open **http://localhost:8080**.
 
-## Architecture
+</details>
+
+---
+
+## ⚙️ Commands
+
+### CLI (`moidhost`)
+
+After install, the `moidhost` CLI is available globally:
+
+<details>
+<summary><b>⚙️ CLI commands (click to expand)</b></summary>
+<br>
+
+```bash
+moidhost                    Start the web server
+moidhost version            Print version
+sudo moidhost update        Self-update (rebuilds from source)
+sudo moidhost uninstall     Remove binary, service, and data
+sudo moidhost reset-password  Reset admin password
+```
+
+</details>
+
+<details>
+<summary><b>🛠️ Service management (click to expand)</b></summary>
+<br>
+
+| Action | Command |
+|---|---|
+| ▶️ Start | `sudo systemctl start moidhost` |
+| ⏹️ Stop | `sudo systemctl stop moidhost` |
+| 🔄 Restart | `sudo systemctl restart moidhost` |
+| 📊 Status | `sudo systemctl status moidhost` |
+| 📜 Logs | `journalctl -u moidhost.service -f` |
+| 🔄 Update | `sudo moidhost update` |
+| 🗑️ Uninstall | `sudo moidhost uninstall` |
+| 🔑 Reset password | `sudo moidhost reset-password` |
+
+</details>
+
+---
+
+## 🔧 Configuration
+
+<details>
+<summary><b>Click to expand</b></summary>
+<br>
+
+All configuration is via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `MOIDHOST_DATA` | `/var/lib/moidhost` | Directory for config.json, users.json, and per-server data |
+| `MOIDHOST_ADDR` | `:8080` | Listen address (e.g. `:80` or `0.0.0.0:443`) |
+
+### Data layout
 
 ```
-                 Browser (Web UI)
-                      |
-                  HTTP / WS
-                      |
-              moidhost (Go binary)
-              ├── Static files (embedded)
-              ├── REST API
-              ├── WebSocket console
-              └── Java process manager
-                      |
-                  Java (Minecraft server)
+$MOIDHOST_DATA/
+├── config.json              # Global server manager config
+├── users.json               # User accounts (bcrypt hashes, roles, permissions)
+├── .setup_admin             # Deleted after first-run admin creation
+└── servers/
+    └── <server-id>/
+        ├── server.properties
+        ├── eula.txt
+        ├── world/
+        ├── world_nether/
+        ├── world_the_end/
+        ├── backups/
+        ├── plugins/
+        ├── usercache.json
+        └── ...              # Your server jar, configs, mods
 ```
 
-## Why not Pterodactyl / Pelican?
+> [!NOTE]
+> Change `MOIDHOST_DATA` and restart with `sudo systemctl restart moidhost` to use a different data directory.
 
-- **Single binary** — no PHP, Node.js, Docker, or database server needed
-- **Simple** — one config file, one data directory
-- **Lightweight** — uses < 10 MB RAM when no servers are running
-- **No lock-in** — your servers are standard Minecraft installations
+</details>
 
-## License
+---
 
-MIT
+## 🏗️ Architecture
+
+```
+                  Browser (Web UI)
+                       |
+                   HTTP / WS
+                       |
+               moidhost (Go binary)
+               ├── Embedded web files (vanilla HTML/CSS/JS)
+               ├── REST API (auth, servers, files, world, backups, users)
+               ├── WebSocket console server
+               ├── JSON config store (no database)
+               └── Java process manager (PTY-based)
+                       |
+                   Java (Minecraft server)
+```
+
+### Design decisions
+
+- **Single binary** — everything embedded, including all web assets. No Node.js, no PHP, no Docker.
+- **No database** — config and user data stored as plain JSON files. Zero daemons to manage.
+- **Raw process management** — no container overhead. Starts Java directly with a PTY for interactive console.
+- **Vanilla frontend** — no React, no Vue, no build step. One HTML file, one CSS file, one JS file.
+- **Authentication** — bcrypt password hashing, random 32-byte session tokens, 24h expiry, per-server permission model.
+
+---
+
+## 🧩 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Backend** | Go 1.23+ (standard library + `github.com/coder/websocket` + `golang.org/x/crypto`) |
+| **Frontend** | Vanilla JavaScript (no framework, no build step) |
+| **Database** | JSON files (users via read/write with `sync.RWMutex`) |
+| **Process** | PTY-based Java subprocess with ring buffer log |
+| **Console** | WebSocket with bidirectional command I/O |
+
+---
+
+## 📊 Resource Usage
+
+moidhost is designed for modest hardware — it runs comfortably alongside your Minecraft servers on a **$5 VPS** or **Raspberry Pi**.
+
+| Resource | Idle | Active (1 server) |
+|---|---|---|
+| **Binary size** | ~10 MB | — |
+| **RAM** | ~5 MB | ~8 MB (moidhost only; Java server RAM is separate) |
+| **CPU** | < 0.5% | 1–3% (API requests, console streaming) |
+
+Your Minecraft server's resource usage depends on its own configuration (Xmx, plugins, player count).
+
+---
+
+## 📄 License
+
+This project is **open source** — you are free to use, modify, share, sell, or do absolutely anything you want with it. No strings attached.
+
+[MIT](LICENSE)
+
+---
+
+<div align="center">
+  <p>Made with ❤️ + 🤖 for people who love Minecraft.</p>
+  <p>
+    <a href="https://github.com/Moid-M/moidhost/issues">🐛 Report a bug</a>
+    ·
+    <a href="https://github.com/Moid-M/moidhost/issues">💡 Request a feature</a>
+  </p>
+</div>

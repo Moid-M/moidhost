@@ -52,16 +52,42 @@ func toResponse(inst *server.Instance) serverResponse {
 	}
 }
 
+func (h *Handler) checkPerm(w http.ResponseWriter, r *http.Request, id, perm string) bool {
+	if GetRoleFromCtx(r) == "admin" {
+		return true
+	}
+	if !h.auth.CheckPermission(r, id, perm) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
 func (h *Handler) ListServers(w http.ResponseWriter, r *http.Request) {
 	insts := h.manager.List()
-	resp := make([]serverResponse, len(insts))
-	for i, inst := range insts {
-		resp[i] = toResponse(inst)
+	role := GetRoleFromCtx(r)
+	username := GetUserFromCtx(r)
+	resp := make([]serverResponse, 0, len(insts))
+	for _, inst := range insts {
+		if role == "admin" {
+			resp = append(resp, toResponse(inst))
+		} else {
+			user := h.auth.GetUsersFile().GetUser(username)
+			if user != nil {
+				if _, ok := user.Permissions[inst.Config.ID]; ok {
+					resp = append(resp, toResponse(inst))
+				}
+			}
+		}
 	}
 	json.NewEncoder(w).Encode(resp)
 }
 
 func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
+	if GetRoleFromCtx(r) != "admin" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	var sc config.ServerConfig
 	if err := json.NewDecoder(r.Body).Decode(&sc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -91,6 +117,9 @@ func (h *Handler) CreateServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "dashboard") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -101,6 +130,9 @@ func (h *Handler) GetServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "settings") {
+		return
+	}
 	var sc config.ServerConfig
 	if err := json.NewDecoder(r.Body).Decode(&sc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -117,6 +149,9 @@ func (h *Handler) UpdateServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "settings") {
+		return
+	}
 	if err := h.manager.Delete(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -126,6 +161,9 @@ func (h *Handler) DeleteServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "dashboard") {
+		return
+	}
 	if err := h.manager.Start(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -136,6 +174,9 @@ func (h *Handler) StartServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "dashboard") {
+		return
+	}
 	if err := h.manager.Stop(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -146,6 +187,9 @@ func (h *Handler) StopServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) KillServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "dashboard") {
+		return
+	}
 	if err := h.manager.Kill(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -156,6 +200,9 @@ func (h *Handler) KillServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "dashboard") {
+		return
+	}
 	if err := h.manager.Restart(id); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -166,6 +213,9 @@ func (h *Handler) RestartServer(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) AcceptEULA(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "settings") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -182,6 +232,9 @@ func (h *Handler) AcceptEULA(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ServerPlayers(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "players") {
+		return
+	}
 	inst := h.manager.Get(id)
 	if inst == nil {
 		http.Error(w, "server not found", http.StatusNotFound)
@@ -288,6 +341,9 @@ func (h *Handler) SystemStats(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) SendCommand(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "console") {
+		return
+	}
 	var req struct {
 		Command string `json:"command"`
 	}
