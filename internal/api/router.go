@@ -40,6 +40,15 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 	mux.HandleFunc("POST /api/servers/{id}/eula", h.AcceptEULA)
 	mux.HandleFunc("GET /api/servers/{id}/players", h.ServerPlayers)
 
+	// World management
+	mux.HandleFunc("GET /api/servers/{id}/world", h.WorldInfo)
+	mux.HandleFunc("GET /api/servers/{id}/world/download", h.WorldDownload)
+	mux.HandleFunc("POST /api/servers/{id}/world/upload", h.WorldUpload)
+	mux.HandleFunc("GET /api/servers/{id}/world/backups", h.BackupList)
+	mux.HandleFunc("POST /api/servers/{id}/world/backup", h.BackupCreate)
+	mux.HandleFunc("POST /api/servers/{id}/world/restore", h.BackupRestore)
+	mux.HandleFunc("DELETE /api/servers/{id}/world/backup", h.BackupDelete)
+
 	mux.HandleFunc("GET /api/system/stats", h.SystemStats)
 
 	webRoot, err := fs.Sub(webFS, "web")

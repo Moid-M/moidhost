@@ -628,26 +628,68 @@ html, body {
   flex: 1;
   color: var(--text);
   font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.file-editor textarea {
+.file-lang {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-3);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.editor-wrap {
   flex: 1;
-  width: 100%;
-  background: #000;
+  display: flex;
+  background: #080c10;
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 12px;
+  overflow: hidden;
+  min-height: 300px;
+}
+
+.editor-wrap:focus-within {
+  border-color: var(--accent);
+}
+
+.editor-gutter {
+  width: 44px;
+  flex-shrink: 0;
+  background: #0d1117;
+  border-right: 1px solid var(--border);
+  padding: 10px 0;
+  text-align: right;
+  overflow: hidden;
+  user-select: none;
+}
+
+.gutter-line {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 0 8px;
+  color: #484f58;
+}
+
+.editor-wrap textarea {
+  flex: 1;
+  width: 0;
+  background: transparent;
+  border: none;
+  padding: 10px 12px;
   color: var(--text);
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.5;
   resize: none;
   outline: none;
-  min-height: 300px;
-}
-
-.file-editor textarea:focus {
-  border-color: var(--accent);
+  tab-size: 2;
 }
 
 /* Custom modal / prompt */
@@ -787,6 +829,160 @@ html, body {
   text-align: center;
   padding: 40px;
   color: var(--text-dim);
+}
+
+/* World tab */
+.world-section {
+  margin-bottom: 24px;
+}
+
+.world-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.world-notice {
+  background: rgba(210,153,34,0.12);
+  border: 1px solid rgba(210,153,34,0.3);
+  color: var(--yellow);
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.world-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.world-info {
+  flex: 1;
+}
+
+.world-name {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-folder-sm {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 2px;
+  position: relative;
+  flex-shrink: 0;
+}
+.icon-folder-sm::after {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 1px 1px 0 0;
+  position: absolute;
+  top: -2px;
+  left: 0;
+  opacity: 0.8;
+}
+
+.world-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.world-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.world-upload {
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.world-upload:hover,
+.world-upload.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.world-upload code {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.world-upload .hint {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.world-empty {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.backup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.backup-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.backup-name {
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backup-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+
+.backup-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 /* Modal */

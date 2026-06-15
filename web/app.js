@@ -37,6 +37,12 @@ function fmtTime(ticks) {
   return h > 0 ? h+'h '+m+'m' : m+'m';
 }
 
+function fmtDate(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
 /* ── Custom Modal ── */
 function showModal(title, msg, opts = {}) {
   return new Promise(resolve => {
@@ -92,7 +98,7 @@ function showTab(name) {
   $('#server-name').textContent = s.name;
   $('#server-status').className = 'status-badge ' + statusClass(s.status);
   $('#server-status').textContent = s.status;
-  const tabMap = { dashboard: renderDashboard, console: renderConsole, files: renderFiles, settings: renderSettings, players: renderPlayers };
+  const tabMap = { dashboard: renderDashboard, console: renderConsole, files: renderFiles, world: renderWorld, players: renderPlayers, settings: renderSettings };
   (tabMap[name] || (() => {}))(s);
 }
 
@@ -157,7 +163,6 @@ function drawGraph(canvas, label, color, data) {
   const pts = data.slice(-120);
   const n = pts.length;
 
-  // label
   ctx.fillStyle = '#8b949e'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText(label, pad.l, pad.t - 2);
 
@@ -181,7 +186,6 @@ function drawGraph(canvas, label, color, data) {
     ctx.fillText(secs + 's', x, h - 6);
   }
 
-  // gradient fill under line
   const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gh);
   grad.addColorStop(0, color + '30');
   grad.addColorStop(1, color + '05');
@@ -198,7 +202,6 @@ function drawGraph(canvas, label, color, data) {
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // smooth rounded line
   ctx.beginPath();
   pts.forEach((d, i) => {
     const x = pad.l + (i / (n - 1 || 1)) * gw;
@@ -218,7 +221,6 @@ function drawGraph(canvas, label, color, data) {
   ctx.lineJoin = 'round';
   ctx.stroke();
 
-  // latest value badge
   const last = pts[pts.length-1];
   const lx = pad.l + ((n-1) / (n - 1 || 1)) * gw;
   const ly = pad.t + gh - (Math.min(Math.max(last.v, 0), 100) / 100) * gh;
@@ -416,24 +418,74 @@ async function uploadFiles(files) {
 }
 
 /* ── File Editor ── */
+const EXT_MAP = {
+  '.json': 'json', '.js': 'js', '.ts': 'ts', '.html': 'html', '.htm': 'html',
+  '.css': 'css', '.yml': 'yaml', '.yaml': 'yaml', '.xml': 'xml', '.md': 'md',
+  '.py': 'py', '.sh': 'sh', '.txt': 'text', '.properties': 'props',
+  '.toml': 'toml', '.ini': 'ini', '.cfg': 'cfg', '.log': 'log',
+};
+
+function editorLang(path) {
+  const ext = path.substring(path.lastIndexOf('.')).toLowerCase();
+  return EXT_MAP[ext] || 'text';
+}
+
 async function openEditor(path) {
   editingFile = path;
   const el = $('#file-view');
   if (!el) return;
-  el.innerHTML = '<div class="file-editor"><div class="file-editor-header"><span class="file-path">'+esc(path)+'</span><button class="btn btn-sm" onclick="cancelEditor()">Cancel</button><button class="btn btn-primary btn-sm" onclick="saveEditor()">Save</button></div><textarea id="editor-textarea">Loading...</textarea></div>';
+  el.innerHTML = `
+    <div class="file-editor">
+      <div class="file-editor-header">
+        <span class="file-path">${esc(path)}</span>
+        <span class="file-lang">${editorLang(path)}</span>
+        <button class="btn btn-sm" onclick="cancelEditor()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="saveEditor()">Save</button>
+      </div>
+      <div class="editor-wrap">
+        <div class="editor-gutter" id="editor-gutter"></div>
+        <textarea id="editor-textarea" spellcheck="false">Loading...</textarea>
+      </div>
+    </div>`;
   try {
     const resp = await fetch(API+'/servers/'+selectedId+'/file?path='+encodeURIComponent(path));
     if (!resp.ok) throw new Error(await resp.text());
     const text = await resp.text();
-    $('#editor-textarea').value = text;
+    const ta = $('#editor-textarea');
+    ta.value = text;
+    updateGutter();
+    ta.addEventListener('scroll', updateGutter);
+    ta.addEventListener('input', updateGutter);
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = ta.selectionStart;
+        ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(ta.selectionEnd);
+        ta.selectionStart = ta.selectionEnd = start + 2;
+        updateGutter();
+      }
+    });
   } catch(e) { $('#editor-textarea').value = 'Error: '+e.message; }
 }
 
+function updateGutter() {
+  const ta = $('#editor-textarea');
+  const gutter = $('#editor-gutter');
+  if (!ta || !gutter) return;
+  const lines = ta.value.split('\n').length;
+  let html = '';
+  for (let i = 1; i <= lines; i++) {
+    html += '<div class="gutter-line' + (i === lines && ta.value.endsWith('\n') ? ' gutter-last' : '') + '">' + i + '</div>';
+  }
+  gutter.innerHTML = html;
+  gutter.scrollTop = ta.scrollTop;
+}
+
 window.saveEditor = async function() {
-  const textarea = $('#editor-textarea');
-  if (!textarea || !editingFile) return;
+  const ta = $('#editor-textarea');
+  if (!ta || !editingFile) return;
   try {
-    await api('/servers/'+selectedId+'/file?path='+encodeURIComponent(editingFile), { method:'PUT', body: JSON.stringify({content: textarea.value}) });
+    await api('/servers/'+selectedId+'/file?path='+encodeURIComponent(editingFile), { method:'PUT', body: JSON.stringify({content: ta.value}) });
     showModal('Saved', 'File saved successfully.');
     cancelEditor();
   } catch(e) { showModal('Error', esc(e.message)); }
@@ -505,6 +557,167 @@ window.deleteServer = async function() {
   if (!await showModal('Confirm', 'Are you sure? There is no undo.', {ok:'Yes, Delete',cancel:'Cancel'})) return;
   try { await api('/servers/'+selectedId, {method:'DELETE'}); selectedId = null; await loadServers(); $('#server-view').style.display='none'; $('#welcome').style.display='flex'; }
   catch(e) { showModal('Error', esc(e.message)); }
+};
+
+/* ── World Tab ── */
+async function renderWorld(s) {
+  const el = $('#tab-content');
+  el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim)">Loading world data...</div>';
+  try {
+    const [worlds, backups] = await Promise.all([
+      api('/servers/'+selectedId+'/world'),
+      api('/servers/'+selectedId+'/world/backups'),
+    ]);
+
+    const running = s.status === 'running';
+    const warnMsg = running ? '<div class="world-notice">Server is running. Stop it to upload or restore worlds.</div>' : '';
+
+    let html = warnMsg;
+
+    // World list section
+    html += '<div class="world-section"><h3 class="world-section-title">Worlds</h3>';
+    if (!worlds || !worlds.length) {
+      html += '<div class="world-empty">No worlds found. Start the server to generate one.</div>';
+    } else {
+      for (const w of worlds) {
+        html += `<div class="world-card">
+          <div class="world-info">
+            <div class="world-name"><span class="icon-folder-sm"></span>${esc(w.name)}</div>
+            <div class="world-meta">${fmtBytes(w.size)} &middot; ${fmtDate(w.mod_time)}</div>
+          </div>
+          <div class="world-actions">
+            <button class="btn btn-sm" onclick="downloadWorld('${escAttr(w.name)}')">Download</button>
+          </div>
+        </div>`;
+      }
+    }
+    html += '</div>';
+
+    // Upload world
+    html += '<div class="world-section"><h3 class="world-section-title">Upload World</h3>';
+    html += `
+      <div class="world-upload" id="world-upload-zone">
+        <p>Upload a <code>.zip</code> world file</p>
+        <span class="hint">Server must be stopped</span>
+      </div>
+      <div id="world-upload-progress" class="upload-progress" style="display:none">
+        <div class="upload-info"><span id="wu-filename"></span><span id="wu-percent">0%</span></div>
+        <div class="progress-track"><div id="wu-fill" class="progress-fill" style="width:0%"></div></div>
+      </div>`;
+    if (!running) {
+      html += '<div style="margin-top:8px"><button class="btn btn-sm" onclick="uploadWorld()">Upload .zip</button></div>';
+    }
+    html += '</div>';
+
+    // Backups section
+    html += '<div class="world-section"><h3 class="world-section-title">Backups</h3>';
+    html += '<div style="margin-bottom:12px"><button class="btn btn-primary btn-sm" onclick="createBackup()">Create Backup</button></div>';
+    if (!backups || !backups.length) {
+      html += '<div class="world-empty">No backups yet.</div>';
+    } else {
+      html += backups.map(b => `<div class="backup-item">
+        <div class="backup-info">
+          <div class="backup-name">${esc(b.name)}</div>
+          <div class="backup-meta">${fmtBytes(b.size)} &middot; ${fmtDate(b.created)}</div>
+        </div>
+        <div class="backup-actions">
+          <button class="btn btn-sm" onclick="downloadBackup('${escAttr(b.name)}')">Download</button>
+          <button class="btn btn-sm ${running ? '' : ''}" onclick="restoreBackup('${escAttr(b.name)}')" ${running ? 'disabled style="opacity:0.4"' : ''}>Restore</button>
+          <button class="btn btn-sm btn-red" onclick="deleteBackup('${escAttr(b.name)}')">Delete</button>
+        </div>
+      </div>`).join('');
+    }
+    html += '</div>';
+
+    el.innerHTML = html;
+
+    // Setup world upload drop zone
+    if (!running) {
+      const wz = $('#world-upload-zone');
+      if (wz) {
+        wz.addEventListener('click', () => uploadWorld());
+        wz.addEventListener('dragover', e => { e.preventDefault(); wz.classList.add('drag-over'); });
+        wz.addEventListener('dragleave', () => wz.classList.remove('drag-over'));
+        wz.addEventListener('drop', e => { e.preventDefault(); wz.classList.remove('drag-over'); doWorldUpload(e.dataTransfer.files[0]); });
+      }
+    }
+  } catch(e) {
+    el.innerHTML = '<div class="world-empty">Error: '+esc(e.message)+'</div>';
+  }
+}
+
+window.downloadWorld = function(name) {
+  window.open('/api/servers/'+selectedId+'/world/download?world='+encodeURIComponent(name), '_blank');
+};
+
+window.uploadWorld = function() {
+  const i = document.createElement('input');
+  i.type = 'file';
+  i.accept = '.zip';
+  i.onchange = () => { if (i.files[0]) doWorldUpload(i.files[0]); };
+  i.click();
+};
+
+async function doWorldUpload(file) {
+  const pb = $('#world-upload-progress'); if (!pb) return;
+  pb.style.display = 'block';
+  $('#wu-filename').textContent = file.name;
+
+  const fd = new FormData();
+  fd.append('file', file);
+  const x = new XMLHttpRequest();
+  x.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      $('#wu-percent').textContent = Math.round(e.loaded/e.total*100)+'%';
+      $('#wu-fill').style.width = Math.round(e.loaded/e.total*100)+'%';
+    }
+  };
+  x.onload = () => {
+    pb.style.display = 'none';
+    if (x.status >= 200 && x.status < 300) {
+      showModal('Success', 'World uploaded successfully.');
+      renderWorld(servers.find(s => s.id === selectedId));
+    } else {
+      showModal('Error', x.responseText || 'Upload failed');
+    }
+  };
+  x.onerror = () => { pb.style.display = 'none'; showModal('Error', 'Network error'); };
+  x.open('POST', API+'/servers/'+selectedId+'/world/upload');
+  x.send(fd);
+}
+
+window.createBackup = async function() {
+  try {
+    const b = await api('/servers/'+selectedId+'/world/backup', { method: 'POST' });
+    showModal('Backup Created', 'Backup "'+b.name+'" created.');
+    renderWorld(servers.find(s => s.id === selectedId));
+  } catch(e) { showModal('Error', esc(e.message)); }
+};
+
+window.restoreBackup = async function(name) {
+  if (!await showModal('Restore Backup', 'Restore "'+name+'"? This will overwrite current world files.', {ok:'Restore',cancel:'Cancel'})) return;
+  if (servers.find(s => s.id === selectedId)?.status === 'running') {
+    showModal('Error', 'Server must be stopped to restore.');
+    return;
+  }
+  try {
+    await api('/servers/'+selectedId+'/world/restore?name='+encodeURIComponent(name), { method: 'POST' });
+    showModal('Restored', 'Backup "'+name+'" restored.');
+    renderWorld(servers.find(s => s.id === selectedId));
+  } catch(e) { showModal('Error', esc(e.message)); }
+};
+
+window.deleteBackup = async function(name) {
+  if (!await showModal('Delete Backup', 'Delete "'+name+'"?', {ok:'Delete',cancel:'Cancel'})) return;
+  try {
+    await api('/servers/'+selectedId+'/world/backup?name='+encodeURIComponent(name), { method: 'DELETE' });
+    showModal('Deleted', 'Backup deleted.');
+    renderWorld(servers.find(s => s.id === selectedId));
+  } catch(e) { showModal('Error', esc(e.message)); }
+};
+
+window.downloadBackup = function(name) {
+  window.open('/api/servers/'+selectedId+'/download?path='+encodeURIComponent('backups/'+name), '_blank');
 };
 
 /* ── Players Tab ── */
