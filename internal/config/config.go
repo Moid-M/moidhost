@@ -35,7 +35,11 @@ func (s *Store) Load() (*Config, error) {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &Config{Servers: []ServerConfig{}, Port: 8080}, nil
+			return &Config{
+				Servers: []ServerConfig{},
+				DataDir: filepath.Join(filepath.Dir(s.path), "servers"),
+				Port:    8080,
+			}, nil
 		}
 		return nil, err
 	}

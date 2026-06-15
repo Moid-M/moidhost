@@ -13,6 +13,22 @@ import (
 	"moidhost/internal/process"
 )
 
+// absDataDir resolves cfg.DataDir to an absolute path.
+// This is defense-in-depth: config.go::Load() already resolves relative
+// DataDir to absolute, but if config.json was saved with a stale relative
+// path by an older build, this ensures the path is absolute at use-time.
+func absDataDir(cfg *config.Config) error {
+	if filepath.IsAbs(cfg.DataDir) {
+		return nil
+	}
+	abs, err := filepath.Abs(cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("cannot resolve data directory %q: %w", cfg.DataDir, err)
+	}
+	cfg.DataDir = abs
+	return nil
+}
+
 type Status string
 
 const (
@@ -39,6 +55,9 @@ type Manager struct {
 func NewManager(store *config.Store) (*Manager, error) {
 	cfg, err := store.Load()
 	if err != nil {
+		return nil, err
+	}
+	if err := absDataDir(cfg); err != nil {
 		return nil, err
 	}
 	m := &Manager{
@@ -85,6 +104,12 @@ func (m *Manager) Create(sc config.ServerConfig) error {
 	if _, ok := m.instances[sc.ID]; ok {
 		return fmt.Errorf("server %s already exists", sc.ID)
 	}
+
+	if err := absDataDir(m.cfg); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "[moidhost] Create: DataDir=%q ID=%q serverDir=%q\n",
+		m.cfg.DataDir, sc.ID, filepath.Join(m.cfg.DataDir, sc.ID))
 
 	if err := os.MkdirAll(m.cfg.DataDir, 0755); err != nil {
 		return fmt.Errorf("cannot create servers directory: %w", err)
