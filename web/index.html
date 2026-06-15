@@ -14,11 +14,15 @@
         <h1 onclick="closeSidebar()">moidhost</h1>
         <span id="sidebar-user"></span>
       </div>
-      <div class="sidebar-actions">
-        <button id="new-server-btn" class="btn btn-primary">+ New Server</button>
+      <div class="sidebar-section">
+        <div class="sidebar-section-header" onclick="toggleServerList()">
+          <span class="section-header-label">Servers</span>
+          <span class="section-arrow" id="server-list-arrow">▾</span>
+        </div>
+        <div id="server-list" class="sidebar-section-body"></div>
       </div>
-      <div id="server-list"></div>
       <div class="sidebar-footer">
+        <button id="new-server-btn" class="btn btn-primary" style="width:100%;margin-bottom:6px">+ New Server</button>
         <button class="btn btn-sm" onclick="logout()" style="width:100%">Logout</button>
       </div>
     </aside>

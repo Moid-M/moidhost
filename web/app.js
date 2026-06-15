@@ -13,6 +13,8 @@ let statsInterval = null;
 let authToken = null;
 let authUser = null;
 
+let serversCollapsed = false;
+
 const $ = (s, p = document) => p.querySelector(s);
 const $$ = (s, p = document) => [...p.querySelectorAll(s)];
 
@@ -156,6 +158,19 @@ function closeSidebar() {
 function isMobile() { return window.innerWidth <= 768; }
 
 /* ── Server List ── */
+function toggleServerList() {
+  serversCollapsed = !serversCollapsed;
+  const el = $('#server-list');
+  const arrow = $('#server-list-arrow');
+  if (serversCollapsed) {
+    el.style.display = 'none';
+    if (arrow) arrow.style.transform = 'rotate(-90deg)';
+  } else {
+    el.style.display = '';
+    if (arrow) arrow.style.transform = '';
+  }
+}
+
 function renderSidebar() {
   const el = $('#server-list');
   el.innerHTML = servers.map(s => `
@@ -165,6 +180,8 @@ function renderSidebar() {
     </div>
   `).join('');
   el.querySelectorAll('.server-item').forEach(e => e.addEventListener('click', () => selectServer(e.dataset.id)));
+  if (serversCollapsed) el.style.display = 'none';
+  else el.style.display = '';
 }
 
 function selectServer(id) {
