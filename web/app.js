@@ -184,6 +184,15 @@ function renderFiles(s) {
     <div class="drop-zone" id="drop-zone">
       <p>Drop files here or click to browse</p>
       <span class="hint">Files are uploaded to the current directory</span>
+      <div id="upload-progress" class="upload-progress" style="display:none">
+        <div class="upload-info">
+          <span id="upload-filename"></span>
+          <span id="upload-percent">0%</span>
+        </div>
+        <div class="progress-track">
+          <div id="progress-fill" class="progress-fill" style="width:0%"></div>
+        </div>
+      </div>
     </div>
     <div class="file-list" id="file-list">
       <div style="padding:20px;text-align:center;color:var(--text-dim)">Loading...</div>
@@ -281,6 +290,44 @@ function setupDropZone(s) {
   });
 }
 
+function showProgress(name, pct) {
+  const bar = $('#upload-progress');
+  if (!bar) return;
+  bar.style.display = 'block';
+  $('#upload-filename').textContent = name;
+  $('#upload-percent').textContent = pct + '%';
+  $('#progress-fill').style.width = pct + '%';
+}
+
+function hideProgress() {
+  const bar = $('#upload-progress');
+  if (!bar) return;
+  bar.style.display = 'none';
+  $('#progress-fill').style.width = '0%';
+}
+
+function uploadXHR(file, dir) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (dir) form.append('dir', dir);
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) {
+        showProgress(file.name, Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+      else reject(new Error(xhr.responseText || 'Upload failed'));
+    };
+    xhr.onerror = () => reject(new Error('Network error'));
+    xhr.open('POST', API + `/servers/${selectedId}/upload`);
+    xhr.send(form);
+  });
+}
+
 window.uploadPlugin = function() {
   const input = document.createElement('input');
   input.type = 'file';
@@ -288,13 +335,11 @@ window.uploadPlugin = function() {
   input.multiple = true;
   input.onchange = async () => {
     for (const file of input.files) {
-      const form = new FormData();
-      form.append('file', file);
-      form.append('dir', 'plugins');
       try {
-        await fetch(API + `/servers/${selectedId}/upload`, { method: 'POST', body: form });
-      } catch (e) { alert('Upload failed: ' + e.message); }
+        await uploadXHR(file, 'plugins');
+      } catch (e) { alert(e.message); }
     }
+    hideProgress();
     loadFiles();
   };
   input.click();
@@ -302,13 +347,11 @@ window.uploadPlugin = function() {
 
 async function uploadFiles(files) {
   for (const file of files) {
-    const form = new FormData();
-    form.append('file', file);
-    if (filePath) form.append('dir', filePath);
     try {
-      await fetch(API + `/servers/${selectedId}/upload`, { method: 'POST', body: form });
-    } catch (e) { alert('Upload failed: ' + e.message); }
+      await uploadXHR(file, filePath || '');
+    } catch (e) { alert(e.message); }
   }
+  hideProgress();
   loadFiles();
 }
 
