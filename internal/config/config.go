@@ -48,6 +48,12 @@ func (s *Store) Load() (*Config, error) {
 	}
 	if cfg.DataDir == "" {
 		cfg.DataDir = filepath.Join(filepath.Dir(s.path), "servers")
+	} else if !filepath.IsAbs(cfg.DataDir) {
+		cfg.DataDir = filepath.Join(filepath.Dir(s.path), cfg.DataDir)
+	}
+	cfg.DataDir = filepath.Clean(cfg.DataDir)
+	for i := range cfg.Servers {
+		cfg.Servers[i].Path = filepath.Join(cfg.DataDir, cfg.Servers[i].ID)
 	}
 	if cfg.Port == 0 {
 		cfg.Port = 8080
