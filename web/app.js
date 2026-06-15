@@ -83,6 +83,7 @@ async function initApp() {
     const stored = sessionStorage.getItem('moidhost_token');
     if (stored) {
       authToken = stored;
+      loginPage();
       try {
         const info = await fetch(API + '/auth/validate', { headers: { 'Authorization': 'Bearer ' + authToken } });
         if (!info.ok) throw new Error('invalid');
