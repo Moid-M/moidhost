@@ -2,11 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"moidhost/internal/system"
 )
 
 func errBad(msg string) error  { return &apiErr{msg, http.StatusBadRequest} }
@@ -25,6 +28,21 @@ type fileEntry struct {
 	IsDir   bool   `json:"is_dir"`
 	Size    int64  `json:"size"`
 	ModTime string `json:"mod_time"`
+}
+
+func (h *Handler) checkDiskLimit(inst *server.Instance, additionalBytes int64) error {
+	if inst.Config.DiskLimitMB <= 0 {
+		return nil
+	}
+	limit := uint64(inst.Config.DiskLimitMB) * 1024 * 1024
+	current, err := system.GetDirSize(inst.Config.Path)
+	if err != nil {
+		return fmt.Errorf("cannot check disk usage: %w", err)
+	}
+	if current+uint64(additionalBytes) > limit {
+		return fmt.Errorf("disk limit of %d MB exceeded", inst.Config.DiskLimitMB)
+	}
+	return nil
 }
 
 func (h *Handler) safePath(id, subPath string) (string, error) {
@@ -101,6 +119,11 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+
+	if err := h.checkDiskLimit(inst, header.Size); err != nil {
+		http.Error(w, err.Error(), http.StatusInsufficientStorage)
+		return
+	}
 
 	subDir := r.FormValue("dir")
 	destDir := inst.Config.Path

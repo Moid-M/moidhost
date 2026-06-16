@@ -427,6 +427,15 @@ func (h *Handler) WorldUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer reader.Close()
 
+	var uncompressedSize int64
+	for _, f := range reader.File {
+		uncompressedSize += int64(f.UncompressedSize64)
+	}
+	if err := h.checkDiskLimit(inst, uncompressedSize); err != nil {
+		http.Error(w, err.Error(), http.StatusInsufficientStorage)
+		return
+	}
+
 	var extractedWorlds []string
 	for _, f := range reader.File {
 		rel := filepath.Clean(f.Name)
