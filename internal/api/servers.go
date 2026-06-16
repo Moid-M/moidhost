@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"moidhost/internal/config"
@@ -24,6 +25,7 @@ type serverResponse struct {
 	EULAAccepted bool          `json:"eula_accepted"`
 	CPUCores     int           `json:"cpu_cores"`
 	DiskLimitMB  int           `json:"disk_limit_mb"`
+	MaxMemory    uint64        `json:"max_memory_bytes"`
 }
 
 func checkEULA(path string) bool {
@@ -53,7 +55,46 @@ func toResponse(inst *server.Instance) serverResponse {
 		EULAAccepted: checkEULA(inst.Config.Path),
 		CPUCores:     inst.Config.CPUCores,
 		DiskLimitMB:  inst.Config.DiskLimitMB,
+		MaxMemory:    parseMaxMemory(inst.Config.JavaArgs),
 	}
+}
+
+// parseMaxMemory extracts -Xmx<value> from Java args and returns bytes.
+func parseMaxMemory(javaArgs string) uint64 {
+	fields := strings.Fields(javaArgs)
+	for _, f := range fields {
+		f = strings.ToLower(f)
+		if !strings.HasPrefix(f, "-xmx") {
+			continue
+		}
+		val := strings.TrimPrefix(f, "-xmx")
+		if val == "" {
+			continue
+		}
+		var mult uint64 = 1
+		suffix := val[len(val)-1]
+		numStr := val
+		switch suffix {
+		case 'k':
+			mult = 1024
+			numStr = val[:len(val)-1]
+		case 'm':
+			mult = 1024 * 1024
+			numStr = val[:len(val)-1]
+		case 'g':
+			mult = 1024 * 1024 * 1024
+			numStr = val[:len(val)-1]
+		case 't':
+			mult = 1024 * 1024 * 1024 * 1024
+			numStr = val[:len(val)-1]
+		}
+		n, err := strconv.ParseUint(numStr, 10, 64)
+		if err != nil {
+			continue
+		}
+		return n * mult
+	}
+	return 0
 }
 
 func (h *Handler) checkPerm(w http.ResponseWriter, r *http.Request, id string, perms ...string) bool {
@@ -360,6 +401,7 @@ func (h *Handler) ServerStats(w http.ResponseWriter, r *http.Request) {
 	stats := struct {
 		CPUPercent  float64 `json:"cpu_percent"`
 		MemoryRSS   uint64  `json:"memory_rss_bytes"`
+		MaxMemory   uint64  `json:"max_memory_bytes"`
 		DiskUsed    uint64  `json:"disk_used_bytes"`
 		DiskLimit   uint64  `json:"disk_limit_bytes"`
 		CPUCores    int     `json:"cpu_cores"`
@@ -369,6 +411,7 @@ func (h *Handler) ServerStats(w http.ResponseWriter, r *http.Request) {
 	pid := h.manager.GetProcessPid(id)
 	stats.ProcessPid = pid
 	stats.CPUCores = inst.Config.CPUCores
+	stats.MaxMemory = parseMaxMemory(inst.Config.JavaArgs)
 	if inst.Config.DiskLimitMB > 0 {
 		stats.DiskLimit = uint64(inst.Config.DiskLimitMB) * 1024 * 1024
 	}
