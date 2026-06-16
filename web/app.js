@@ -38,6 +38,8 @@ function loginPage() {
   $('#login-page').style.display = 'flex';
   $('#app').style.display = 'none';
   $('#login-error').textContent = '';
+  const btn = $('#login-btn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
 }
 
 async function handleLogin(e) {
@@ -75,8 +77,11 @@ function logout() {
   if (ws) { ws.close(); ws = null; }
   if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
   if (loadInterval) { clearInterval(loadInterval); loadInterval = null; }
+  appReady = false;
   loginPage();
 }
+
+let appReady = false;
 
 async function initApp() {
   if (!authToken) {
@@ -93,13 +98,16 @@ async function initApp() {
     } else { loginPage(); return; }
   }
 
+  if (appReady) return;
+  appReady = true;
+
   $('#login-page').style.display = 'none';
   $('#app').style.display = 'flex';
   if (authUser) {
     $('#sidebar-user').textContent = authUser.username + (authUser.role === 'admin' ? ' (admin)' : '');
     $('#manage-users-btn').style.display = authUser.role === 'admin' ? '' : 'none';
   }
-  loadServers();
+  await loadServers();
   if (loadInterval) clearInterval(loadInterval);
   loadInterval = setInterval(loadServers, 5000);
   $$('.tab').forEach(tab => tab.addEventListener('click', () => showTab(tab.dataset.tab)));
@@ -167,13 +175,17 @@ function toggleServerList() {
 
 function renderSidebar() {
   const el = $('#server-list');
-  el.innerHTML = servers.map(s => `
-    <div class="server-item${s.id===selectedId?' active':''}" data-id="${s.id}">
-      <span class="name">${esc(s.name)}</span>
-      <span class="dot ${statusClass(s.status)}"></span>
-    </div>
-  `).join('');
-  el.querySelectorAll('.server-item').forEach(e => e.addEventListener('click', () => selectServer(e.dataset.id)));
+  if (!servers.length) {
+    el.innerHTML = '<div style="padding:10px 12px;font-size:12px;color:var(--text-dim);text-align:center">No servers yet.</div>';
+  } else {
+    el.innerHTML = servers.map(s => `
+      <div class="server-item${s.id===selectedId?' active':''}" data-id="${s.id}">
+        <span class="name">${esc(s.name)}</span>
+        <span class="dot ${statusClass(s.status)}"></span>
+      </div>
+    `).join('');
+    el.querySelectorAll('.server-item').forEach(e => e.addEventListener('click', () => selectServer(e.dataset.id)));
+  }
   if (serversCollapsed) el.style.display = 'none';
   else el.style.display = '';
 }
@@ -199,8 +211,15 @@ function showTab(name) {
   currentTab = name; editingFile = null;
   filterTabs();
   $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  if (!selectedId) {
+    $('#tab-content').innerHTML = '<div class="empty-state">Select a server first.</div>';
+    return;
+  }
   const s = servers.find(x => x.id === selectedId);
-  if (!s) return;
+  if (!s) {
+    $('#tab-content').innerHTML = '<div class="empty-state">Server not found. It may have been removed.</div>';
+    return;
+  }
   $('#server-name').textContent = s.name;
   $('#server-status').className = 'status-badge ' + statusClass(s.status);
   $('#server-status').textContent = s.status;
@@ -633,14 +652,18 @@ function closeModal(){
 /* ── Init ── */
 async function loadServers() {
   try {
-    servers = await api('/servers'); renderSidebar();
+    const result = await api('/servers');
+    if (Array.isArray(result)) servers = result;
+    renderSidebar();
     if (selectedId && servers.find(s => s.id === selectedId)) {
       const s = servers.find(x => x.id === selectedId);
       $('#server-name').textContent = s.name;
       $('#server-status').className = 'status-badge ' + statusClass(s.status);
       $('#server-status').textContent = s.status;
     }
-  } catch(_) {}
+  } catch(e) {
+    if (authToken) console.warn('loadServers:', e.message);
+  }
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); hideCtx(); } });
