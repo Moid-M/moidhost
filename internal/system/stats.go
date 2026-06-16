@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -183,4 +184,131 @@ func parseKB(line string) uint64 {
 		}
 	}
 	return 0
+}
+
+type ProcessStats struct {
+	CPUPercent float64 `json:"cpu_percent"`
+	MemoryRSS  uint64  `json:"memory_rss_bytes"`
+}
+
+// GetProcessStats reads /proc/<pid>/stat and /proc/<pid>/status
+// to return per-process CPU% (delta-based via internal cache) and RSS.
+func GetProcessStats(pid int) (*ProcessStats, error) {
+	utime, stime, err := readProcessJiffies(pid)
+	if err != nil {
+		return nil, err
+	}
+
+	rss, err := readProcessRSS(pid)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	total := utime + stime
+
+	cpuPct := getProcessDelta(pid, total, now)
+
+	return &ProcessStats{
+		CPUPercent: cpuPct,
+		MemoryRSS:  rss,
+	}, nil
+}
+
+// readProcessJiffies reads utime (field 14) and stime (field 15) from /proc/<pid>/stat.
+func readProcessJiffies(pid int) (uint64, uint64, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, 0, fmt.Errorf("cannot read /proc/%d/stat: %w", pid, err)
+	}
+	// /proc/<pid>/stat is space-separated; values are after the closing paren of comm.
+	// Comm can contain spaces and parens, so we skip past the last ')' .
+	content := string(data)
+	idx := strings.LastIndex(content, ") ")
+	if idx < 0 {
+		return 0, 0, fmt.Errorf("malformed /proc/%d/stat", pid)
+	}
+	fields := strings.Fields(content[idx+2:])
+	if len(fields) < 15 {
+		return 0, 0, fmt.Errorf("too few fields in /proc/%d/stat", pid)
+	}
+	utime, _ := strconv.ParseUint(fields[11], 10, 64)
+	stime, _ := strconv.ParseUint(fields[12], 10, 64)
+	return utime, stime, nil
+}
+
+// readProcessRSS reads VmRSS from /proc/<pid>/status (in bytes).
+func readProcessRSS(pid int) (uint64, error) {
+	f, err := os.Open(fmt.Sprintf("/proc/%d/status", pid))
+	if err != nil {
+		return 0, fmt.Errorf("cannot read /proc/%d/status: %w", pid, err)
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "VmRSS:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				kb, err := strconv.ParseUint(fields[1], 10, 64)
+				if err == nil {
+					return kb * 1024, nil
+				}
+			}
+		}
+	}
+	return 0, nil // process may have exited
+}
+
+var (
+	deltaMu    sync.Mutex
+	prevJiffies = make(map[int]processSample)
+)
+
+type processSample struct {
+	total uint64
+	time  time.Time
+}
+
+func getProcessDelta(pid int, total uint64, now time.Time) float64 {
+	deltaMu.Lock()
+	defer deltaMu.Unlock()
+
+	prev, hasPrev := prevJiffies[pid]
+	prevJiffies[pid] = processSample{total: total, time: now}
+
+	if !hasPrev || prev.time.IsZero() {
+		return 0
+	}
+	dt := now.Sub(prev.time).Seconds()
+	if dt <= 0 {
+		return 0
+	}
+	dj := float64(total - prev.total)
+	// CLK_TCK is typically 100 on Linux
+	cpuPct := dj / (100.0 * dt) * 100.0
+	if cpuPct < 0 {
+		cpuPct = 0
+	}
+	pct := math.Round(cpuPct*10) / 10
+	if pct > 100 {
+		pct = 100
+	}
+	return pct
+}
+
+// GetDirSize recursively walks dir and sums all file sizes.
+func GetDirSize(path string) (uint64, error) {
+	var size uint64
+	err := filepath.Walk(path, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return filepath.SkipDir
+		}
+		if !fi.IsDir() {
+			size += uint64(fi.Size())
+		}
+		return nil
+	})
+	return size, err
 }

@@ -161,6 +161,15 @@ func (sp *ServerProcess) Done() <-chan struct{} {
 	return sp.done
 }
 
+func (sp *ServerProcess) Pid() int {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
+	if sp.Cmd != nil && sp.Cmd.Process != nil {
+		return sp.Cmd.Process.Pid
+	}
+	return 0
+}
+
 func (sp *ServerProcess) Running() bool {
 	select {
 	case <-sp.done:

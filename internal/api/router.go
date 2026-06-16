@@ -83,6 +83,7 @@ func (h *Handler) Register(mux *http.ServeMux, webFS embed.FS) {
 
 	// System
 	mux.Handle("GET /api/system/stats", auth(h.SystemStats))
+	mux.Handle("GET /api/servers/{id}/stats", auth(h.ServerStats))
 
 	// User management (admin only, checked inside handlers)
 	mux.Handle("GET /api/users", auth(h.ListUsers))

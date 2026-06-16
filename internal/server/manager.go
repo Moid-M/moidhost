@@ -247,6 +247,12 @@ func (m *Manager) Start(id string) error {
 	}
 	javaArgs = append(javaArgs, inst.Config.JarFile, "nogui")
 
+	if inst.Config.CPUCores > 0 {
+		cpuList := fmt.Sprintf("0-%d", inst.Config.CPUCores-1)
+		javaArgs = append([]string{"-c", cpuList, javaBin}, javaArgs...)
+		javaBin = "taskset"
+	}
+
 	if err := proc.Start(javaBin, javaArgs, inst.Config.Path); err != nil {
 		m.mu.Lock()
 		inst.Status = StatusCrashed
@@ -364,6 +370,16 @@ func (m *Manager) Unsubscribe(id string, ch chan string) {
 		return
 	}
 	inst.Process.Unsubscribe(ch)
+}
+
+func (m *Manager) GetProcessPid(id string) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	inst, ok := m.instances[id]
+	if !ok || inst.Process == nil {
+		return 0
+	}
+	return inst.Process.Pid()
 }
 
 func (m *Manager) GetLogs(id string) ([]string, error) {

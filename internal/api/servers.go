@@ -22,6 +22,8 @@ type serverResponse struct {
 	Status       server.Status `json:"status"`
 	AutoStart    bool          `json:"auto_start"`
 	EULAAccepted bool          `json:"eula_accepted"`
+	CPUCores     int           `json:"cpu_cores"`
+	DiskLimitMB  int           `json:"disk_limit_mb"`
 }
 
 func checkEULA(path string) bool {
@@ -49,6 +51,8 @@ func toResponse(inst *server.Instance) serverResponse {
 		Status:       inst.Status,
 		AutoStart:    inst.Config.AutoStart,
 		EULAAccepted: checkEULA(inst.Config.Path),
+		CPUCores:     inst.Config.CPUCores,
+		DiskLimitMB:  inst.Config.DiskLimitMB,
 	}
 }
 
@@ -338,6 +342,50 @@ func (h *Handler) SystemStats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	json.NewEncoder(w).Encode(stats)
+}
+
+func (h *Handler) ServerStats(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !h.checkPerm(w, r, id, "dashboard") {
+		return
+	}
+
+	inst := h.manager.Get(id)
+	if inst == nil {
+		http.Error(w, "server not found", http.StatusNotFound)
+		return
+	}
+
+	stats := struct {
+		CPUPercent  float64 `json:"cpu_percent"`
+		MemoryRSS   uint64  `json:"memory_rss_bytes"`
+		DiskUsed    uint64  `json:"disk_used_bytes"`
+		DiskLimit   uint64  `json:"disk_limit_bytes"`
+		CPUCores    int     `json:"cpu_cores"`
+		ProcessPid  int     `json:"process_pid"`
+	}{}
+
+	pid := h.manager.GetProcessPid(id)
+	stats.ProcessPid = pid
+	stats.CPUCores = inst.Config.CPUCores
+	if inst.Config.DiskLimitMB > 0 {
+		stats.DiskLimit = uint64(inst.Config.DiskLimitMB) * 1024 * 1024
+	}
+
+	if pid > 0 {
+		ps, err := system.GetProcessStats(pid)
+		if err == nil {
+			stats.CPUPercent = ps.CPUPercent
+			stats.MemoryRSS = ps.MemoryRSS
+		}
+	}
+
+	disk, err := system.GetDirSize(inst.Config.Path)
+	if err == nil {
+		stats.DiskUsed = disk
+	}
+
 	json.NewEncoder(w).Encode(stats)
 }
 
