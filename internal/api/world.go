@@ -429,7 +429,10 @@ func (h *Handler) WorldUpload(w http.ResponseWriter, r *http.Request) {
 
 	var uncompressedSize int64
 	for _, f := range reader.File {
-		uncompressedSize += int64(f.UncompressedSize64)
+		s := int64(f.UncompressedSize64)
+		if s > 0 {
+			uncompressedSize += s
+		}
 	}
 	if err := h.checkDiskLimit(inst, uncompressedSize); err != nil {
 		http.Error(w, err.Error(), http.StatusInsufficientStorage)

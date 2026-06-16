@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"moidhost/internal/server"
 	"moidhost/internal/system"
 )
 
@@ -120,9 +121,11 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	if err := h.checkDiskLimit(inst, header.Size); err != nil {
-		http.Error(w, err.Error(), http.StatusInsufficientStorage)
-		return
+	if header.Size > 0 {
+		if err := h.checkDiskLimit(inst, header.Size); err != nil {
+			http.Error(w, err.Error(), http.StatusInsufficientStorage)
+			return
+		}
 	}
 
 	subDir := r.FormValue("dir")
